@@ -68,6 +68,7 @@ export interface LogoGenerationResult {
   url: string
   prompt: string
   status: "success" | "error"
+  colorTreatment?: "black" | "brand-colors" | "dark-bg"
   error?: string
 }
 

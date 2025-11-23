@@ -53,6 +53,7 @@ export interface WordmarkPromptOptions {
   adjective?: WordmarkAdjective | string // Allow custom adjectives too
   additionalStyles?: string[]            // From concept (e.g., ["bold", "organic"])
   strokeColor?: string                   // Default: "black"
+  colorTreatment: ColorTreatment
 }
 
 export interface LettermarkPromptOptions {
@@ -61,12 +62,15 @@ export interface LettermarkPromptOptions {
   additionalStyles?: string[]
   primaryColor?: string
   secondaryColor?: string
+  colorTreatment?: ColorTreatment
 }
 
 export interface GenerateLogoPromptsParams {
   companyName: string
   concept: LogoConcept
   archetype: LogoArchetype
+  colorTreatment?: ColorTreatment
+  mode?: LiteralMarkMode  // For literal marks
 }
 
 // ============================================================================
@@ -146,11 +150,31 @@ export function generateWordmarkPrompt(options: WordmarkPromptOptions): string {
     adjective = "Ligature-heavy",
     additionalStyles = [],
     strokeColor = "black",
+    colorTreatment
   } = options
+
+  // Determine color and background based on treatment
+  let actualStrokeColor: string
+  let background: string
+
+  switch (colorTreatment) {
+    case "black":
+      actualStrokeColor = "Black"
+      background = "Fully white background"
+      break
+    case "brand-colors":
+      actualStrokeColor = strokeColor
+      background = "Fully white background"
+      break
+    case "dark-bg":
+      actualStrokeColor = "White"
+      background = "Dark background"
+      break
+  }
 
   const parts = [
     `Wordmark for "${companyName}".`,
-    `${strokeColor.charAt(0).toUpperCase() + strokeColor.slice(1)} stroke.`,
+    `${actualStrokeColor.charAt(0).toUpperCase() + actualStrokeColor.slice(1)} stroke.`,
     "Single-line.",
     "Fully flat.",
     `${adjective}.`,
@@ -161,7 +185,7 @@ export function generateWordmarkPrompt(options: WordmarkPromptOptions): string {
     parts.push(`${additionalStyles.join(", ")}.`)
   }
 
-  parts.push("Fully white background.")
+  parts.push(background + ".")
   parts.push("No extra text.")
 
   return parts.join(" ")
@@ -226,10 +250,28 @@ export function generateEnclosedLettermarkPrompt(shape: LettermarkShape): string
  * Generate derived lettermark prompt (based on wordmark)
  */
 export function generateDerivedLettermarkPrompt(options: LettermarkPromptOptions): string {
-  const { companyName } = options
+  const { companyName, colorTreatment = "black" } = options
   const letters = extractLetters(companyName)
 
-  return `Create a 1:1 lettermark for "${letters}" derived from the style of the provided wordmark. Maintain the exact same font, weight, and color. Isolate the initials on a white background.`
+  let colorInstruction: string
+  let background: string
+
+  switch (colorTreatment) {
+    case "black":
+      colorInstruction = "Use black color"
+      background = "white background"
+      break
+    case "brand-colors":
+      colorInstruction = "Maintain the exact same font, weight, and color"
+      background = "white background"
+      break
+    case "dark-bg":
+      colorInstruction = "Use white color"
+      background = "dark background"
+      break
+  }
+
+  return `Create a 1:1 lettermark for "${letters}" derived from the style of the provided wordmark. ${colorInstruction}. Isolate the initials on a ${background}.`
 }
 
 // ============================================================================
@@ -242,6 +284,7 @@ export function generateDerivedLettermarkPrompt(options: LettermarkPromptOptions
  * This is the main entry point for logo prompt generation
  */
 export type LiteralMarkMode = "straight-forward" | "conceptual" | "continuous-line"
+export type ColorTreatment = "black" | "brand-colors" | "dark-bg"
 
 export interface LiteralMarkPromptOptions {
   companyName: string
@@ -250,6 +293,7 @@ export interface LiteralMarkPromptOptions {
   visualStyle?: string
   primaryColor: string
   secondaryColor?: string
+  colorTreatment: ColorTreatment
 }
 
 // ... (keep existing interfaces)
@@ -263,23 +307,41 @@ export function generateLiteralMarkPrompt(options: LiteralMarkPromptOptions): st
     mode,
     visualObject,
     visualStyle,
+    primaryColor,
+    secondaryColor,
+    colorTreatment
   } = options
 
-  // User requested "Black only" for literal marks
-  const colors = "Colors: Black"
+  // Determine color based on treatment
+  let colors: string
+  let background: string
+
+  switch (colorTreatment) {
+    case "black":
+      colors = "Black"
+      background = "White background"
+      break
+    case "brand-colors":
+      colors = `${primaryColor}${secondaryColor ? ` and ${secondaryColor}` : ""}`
+      background = "White background"
+      break
+    case "dark-bg":
+      colors = "White"
+      background = "Dark background"
+      break
+  }
+
   const letters = extractLetters(companyName)
 
   switch (mode) {
     case "straight-forward":
-      // "Logo mark. Minimalist. Fully flat. Fully white background. No text. [brand colors], [Concept]"
-      // Note: User requested Black only, so we use Black instead of brand colors.
-      return `Logo mark. Minimalist. Fully flat. Fully white background. No text. ${colors}. ${visualStyle || "bold"}. ${visualObject || "Abstract geometric shape"}.`
+      return `Logo mark. Minimalist. Fully flat. ${background}. No text. ${colors}. ${visualStyle || "bold"}. ${visualObject || "Abstract geometric shape"}.`
 
     case "conceptual":
-      return `Logo mark for ${companyName}. Contemporary minimalism with conceptual depth. ${colors}. ${visualStyle || "bold"}. Full white background. No extra text.`
+      return `Logo mark for ${companyName}. Contemporary minimalism with conceptual depth. ${colors}. ${visualStyle || "bold"}. ${background}. No extra text.`
 
     case "continuous-line":
-      return `Minimal continuous-line logo mark. Monoline. Use uniform stroke width with fully rounded corners, and visually merge simple concepts ${visualObject || "abstract shapes"}, "${letters}". ${colors}. The result should feel friendly, simple, and easy to recognize at small sizes. Fully white background. Fully flat.`
+      return `Minimal continuous-line logo mark. Monoline. Use uniform stroke width with fully rounded corners, and visually merge simple concepts ${visualObject || "abstract shapes"}, "${letters}". ${colors}. The result should feel friendly, simple, and easy to recognize at small sizes. ${background}. Fully flat.`
 
     default:
       return `Logo mark for ${companyName}. ${colors}.`
@@ -294,7 +356,7 @@ export function generateLiteralMarkPrompt(options: LiteralMarkPromptOptions): st
  * This is the main entry point for logo prompt generation
  */
 export function generateLogoPrompt(params: GenerateLogoPromptsParams): string {
-  const { companyName, concept, archetype } = params
+  const { companyName, concept, archetype, colorTreatment = "black", mode = "straight-forward" } = params
 
   // Parse concept styles
   const additionalStyles = parseConceptStyles(concept.visualStyle)
@@ -310,19 +372,20 @@ export function generateLogoPrompt(params: GenerateLogoPromptsParams): string {
         companyName,
         adjective,
         additionalStyles,
-        strokeColor: concept.brandColors.primary.name, // Use primary color name
+        strokeColor: concept.brandColors.primary.name,
+        colorTreatment
       })
     }
 
     case "literal": {
-      // Default to "straight-forward" mode as per user request
       return generateLiteralMarkPrompt({
         companyName,
-        mode: "straight-forward",
+        mode,
         visualObject: concept.visualObject,
         visualStyle: concept.visualStyle,
         primaryColor,
-        secondaryColor
+        secondaryColor,
+        colorTreatment
       })
     }
 
@@ -331,7 +394,8 @@ export function generateLogoPrompt(params: GenerateLogoPromptsParams): string {
         companyName,
         additionalStyles,
         primaryColor,
-        secondaryColor
+        secondaryColor,
+        colorTreatment
       })
     }
 
@@ -376,6 +440,7 @@ export function getLettermarkSequence(
       companyName,
       adjective: wordmarkAdjective,
       additionalStyles,
+      colorTreatment: "black"
     }),
     requiresPreviousImage: false,
     aspectRatio: "16:9",
