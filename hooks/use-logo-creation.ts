@@ -232,28 +232,15 @@ export function useLogoCreation(): UseLogoCreationReturn {
                 })
             }
 
-            // Initialize placeholders for derived lettermarks (generated after wordmarks)
-            const derivedLettermarkIds = Array.from({ length: 3 }, (_, i) => `lettermark-derived-${i}`)
-
             // Initialize variations with placeholders
-            const allPlaceholders = [
-                ...phase1Requests.map(req => ({
-                    id: req.id,
-                    type: req.type,
-                    url: '',
-                    prompt: req.prompt,
-                    status: 'success' as const,
-                    colorTreatment: 'black' as const
-                })),
-                ...derivedLettermarkIds.map(id => ({
-                    id,
-                    type: 'lettermark-derived' as LogoArchetype,
-                    url: '',
-                    prompt: '',
-                    status: 'success' as const,
-                    colorTreatment: 'black' as const
-                }))
-            ]
+            const allPlaceholders = phase1Requests.map(req => ({
+                id: req.id,
+                type: req.type,
+                url: '',
+                prompt: req.prompt,
+                status: 'success' as const,
+                colorTreatment: 'black' as const
+            }))
 
             setVariations(allPlaceholders)
 
@@ -268,11 +255,7 @@ export function useLogoCreation(): UseLogoCreationReturn {
                 signal: controller.signal
             })
 
-            if (!response1.ok) {
-                const errorData = await response1.json().catch(() => ({}))
-                console.error('Phase 1 API Error:', errorData)
-                throw new Error(errorData.error || 'Failed to generate phase 1 logos')
-            }
+            if (!response1.ok) throw new Error('Failed to generate phase 1 logos')
 
             const data1 = await response1.json() as BatchGenerateResponse
 
@@ -288,172 +271,158 @@ export function useLogoCreation(): UseLogoCreationReturn {
                 return newVariations
             })
 
-            // ====== Generate Derived Lettermarks from first wordmark ======
-            const wordmarkResult = data1.results.find(r => r.type === 'wordmark' && r.url)
-            let derivedResults: LogoGenerationResult[] = []
 
-            if (wordmarkResult && wordmarkResult.url) {
-                const derivedRequests: LogoGenerationRequest[] = []
+            // ====== PHASE 2: Generate Color Variants (Literal Marks Only) ======
+            // Get all successfully generated black logos
+            const currentVariations = await new Promise<LogoGenerationResult[]>(resolve => {
+                setVariations(prev => {
+                    resolve(prev.filter(v => v.url && v.colorTreatment === 'black'))
+                    return prev
+                })
+            })
 
-                for (let i = 0; i < 3; i++) {
-                    const prompt = generateLogoPrompt({
-                        companyName: brandDetails.companyName,
-                        concept: selectedConcept,
-                        archetype: 'lettermark-derived',
-                        colorTreatment: 'black'
-                    })
+            const phase2ColorRequests: LogoGenerationRequest[] = []
+            const phase2DarkRequests: LogoGenerationRequest[] = []
+            const coloredLogoMap = new Map<string, string>() // Map black ID to colored ID
 
-                    derivedRequests.push({
-                        id: derivedLettermarkIds[i],
-                        type: 'lettermark-derived' as LogoArchetype,
-                        prompt,
-                        aspectRatio: '1:1',
-                        previousImageUrl: wordmarkResult.url
-                    })
+            // For each black logo, generate colored versions (ONLY for literal marks)
+            currentVariations.forEach(blackLogo => {
+                // Only color literal marks
+                if (blackLogo.type !== 'literal') {
+                    return
                 }
 
-                const derivedResponse = await fetch('/api/generate-image', {
+                // Extract mode from literal IDs (e.g., "literal-straight-forward-0")
+                const modeMatch = blackLogo.id.match(/literal-(\w+-?\w*)-/)
+                const mode = modeMatch ? modeMatch[1] as 'straight-forward' | 'conceptual' | 'continuous-line' : 'straight-forward'
+
+                // Colored version for light background (AI-generated colors)
+                const brandColorsPrompt = generateLogoPrompt({
+                    companyName: brandDetails.companyName,
+                    concept: selectedConcept,
+                    archetype: blackLogo.type,
+                    mode: mode,
+                    colorTreatment: 'brand-colors'
+                })
+
+                const coloredId = `${blackLogo.id}-brand`
+                coloredLogoMap.set(blackLogo.id, coloredId)
+
+                phase2ColorRequests.push({
+                    id: coloredId,
+                    type: blackLogo.type,
+                    prompt: brandColorsPrompt,
+                    aspectRatio: '1:1',
+                    previousImageUrl: blackLogo.url
+                })
+            })
+
+            // Add placeholders for phase 2 colored versions
+            setVariations(prev => [
+                ...prev,
+                ...phase2ColorRequests.map(req => ({
+                    id: req.id,
+                    type: req.type,
+                    url: '',
+                    prompt: req.prompt,
+                    status: 'success' as const,
+                    colorTreatment: 'brand-colors' as const
+                }))
+            ])
+
+            // Execute Phase 2A: Generate colored versions for light background
+            if (phase2ColorRequests.length > 0) {
+                const response2a = await fetch('/api/generate-image', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         mode: 'logo-batch',
-                        requests: derivedRequests
+                        requests: phase2ColorRequests
                     } as BatchGenerateRequest),
                     signal: controller.signal
                 })
 
-                if (derivedResponse.ok) {
-                    const derivedData = await derivedResponse.json() as BatchGenerateResponse
-                    derivedResults = derivedData.results.filter(r => r.url)
+                if (response2a.ok) {
+                    const data2a = await response2a.json() as BatchGenerateResponse
 
+                    // Update variations with colored results
                     setVariations(prev => {
                         const newVariations = [...prev]
-                        derivedData.results.forEach(result => {
+                        data2a.results.forEach(result => {
                             const index = newVariations.findIndex(v => v.id === result.id)
                             if (index !== -1) {
-                                newVariations[index] = { ...result, colorTreatment: 'black' }
+                                newVariations[index] = { ...result, colorTreatment: 'brand-colors' }
                             }
                         })
                         return newVariations
                     })
-                }
-            }
 
-            // ====== PHASE 2: Generate Color Variants ======
-            // Collect all successfully generated black logos from Phase 1
-            const allBlackLogos: LogoGenerationResult[] = [
-                ...data1.results.filter(r => r.url),
-                ...derivedResults
-            ]
+                    // Phase 2B: Generate dark background versions using colored versions as input
+                    data2a.results.forEach(coloredResult => {
+                        if (coloredResult.url && coloredResult.type === 'literal') {
+                            // Extract mode and original info from the colored ID
+                            const blackId = coloredResult.id.replace('-brand', '')
+                            const modeMatch = blackId.match(/literal-(\w+-?\w*)-/)
+                            const mode = modeMatch ? modeMatch[1] as 'straight-forward' | 'conceptual' | 'continuous-line' : 'straight-forward'
 
-            console.log(`Phase 1 complete. Generated ${allBlackLogos.length} black logos. Starting Phase 2...`)
+                            const darkBgPrompt = generateLogoPrompt({
+                                companyName: brandDetails.companyName,
+                                concept: selectedConcept,
+                                archetype: 'literal',
+                                mode: mode,
+                                colorTreatment: 'dark-bg'
+                            })
 
-            // Only proceed with Phase 2 if we have black logos
-            if (allBlackLogos.length > 0) {
-                const phase2Requests: LogoGenerationRequest[] = []
-
-                // For each black logo, generate brand-colors and dark-bg versions
-                allBlackLogos.forEach(blackLogo => {
-                    // Extract mode from literal IDs (e.g., "literal-straight-forward-0")
-                    const modeMatch = blackLogo.id.match(/literal-(\w+-?\w*)-/)
-                    const mode = modeMatch ? modeMatch[1] as 'straight-forward' | 'conceptual' | 'continuous-line' : 'straight-forward'
-
-                    // Brand colors version
-                    const brandColorsPrompt = generateLogoPrompt({
-                        companyName: brandDetails.companyName,
-                        concept: selectedConcept,
-                        archetype: blackLogo.type,
-                        mode: blackLogo.type === 'literal' ? mode : undefined,
-                        colorTreatment: 'brand-colors'
+                            phase2DarkRequests.push({
+                                id: `${blackId}-dark`,
+                                type: 'literal',
+                                prompt: darkBgPrompt,
+                                aspectRatio: '1:1',
+                                previousImageUrl: coloredResult.url // Use colored version as input
+                            })
+                        }
                     })
 
-                    phase2Requests.push({
-                        id: `${blackLogo.id}-brand`,
-                        type: blackLogo.type,
-                        prompt: brandColorsPrompt,
-                        aspectRatio: blackLogo.type === 'wordmark' ? '16:9' : '1:1',
-                        previousImageUrl: blackLogo.url
-                    })
+                    // Add placeholders for dark background versions
+                    setVariations(prev => [
+                        ...prev,
+                        ...phase2DarkRequests.map(req => ({
+                            id: req.id,
+                            type: req.type,
+                            url: '',
+                            prompt: req.prompt,
+                            status: 'success' as const,
+                            colorTreatment: 'dark-bg' as const
+                        }))
+                    ])
 
-                    // Dark background version
-                    const darkBgPrompt = generateLogoPrompt({
-                        companyName: brandDetails.companyName,
-                        concept: selectedConcept,
-                        archetype: blackLogo.type,
-                        mode: blackLogo.type === 'literal' ? mode : undefined,
-                        colorTreatment: 'dark-bg'
-                    })
+                    // Execute Phase 2B: Generate dark background versions
+                    if (phase2DarkRequests.length > 0) {
+                        const response2b = await fetch('/api/generate-image', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                mode: 'logo-batch',
+                                requests: phase2DarkRequests
+                            } as BatchGenerateRequest),
+                            signal: controller.signal
+                        })
 
-                    phase2Requests.push({
-                        id: `${blackLogo.id}-dark`,
-                        type: blackLogo.type,
-                        prompt: darkBgPrompt,
-                        aspectRatio: blackLogo.type === 'wordmark' ? '16:9' : '1:1',
-                        previousImageUrl: blackLogo.url
-                    })
-                })
+                        if (response2b.ok) {
+                            const data2b = await response2b.json() as BatchGenerateResponse
 
-                // Add placeholders for phase 2
-                setVariations(prev => [
-                    ...prev,
-                    ...phase2Requests.map(req => ({
-                        id: req.id,
-                        type: req.type,
-                        url: '',
-                        prompt: req.prompt,
-                        status: 'success' as const,
-                        colorTreatment: req.id.endsWith('-brand') ? 'brand-colors' as const : 'dark-bg' as const
-                    }))
-                ])
-
-                console.log(`Phase 2: Generating ${phase2Requests.length} color variants...`)
-
-                // Execute Phase 2 in batches (API limit is 20 per batch)
-                const BATCH_SIZE = 20
-                const batches: LogoGenerationRequest[][] = []
-
-                for (let i = 0; i < phase2Requests.length; i += BATCH_SIZE) {
-                    batches.push(phase2Requests.slice(i, i + BATCH_SIZE))
-                }
-
-                console.log(`Phase 2: Split into ${batches.length} batches`)
-
-                // Process each batch sequentially
-                for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
-                    const batch = batches[batchIndex]
-                    console.log(`Phase 2: Processing batch ${batchIndex + 1}/${batches.length} (${batch.length} requests)`)
-
-                    const response2 = await fetch('/api/generate-image', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            mode: 'logo-batch',
-                            requests: batch
-                        } as BatchGenerateRequest),
-                        signal: controller.signal
-                    })
-
-                    if (!response2.ok) {
-                        const errorData = await response2.json().catch(() => ({}))
-                        console.error(`Phase 2 Batch ${batchIndex + 1} API Error:`, errorData)
-                        continue // Skip to next batch on error
+                            setVariations(prev => {
+                                const newVariations = [...prev]
+                                data2b.results.forEach(result => {
+                                    const index = newVariations.findIndex(v => v.id === result.id)
+                                    if (index !== -1) {
+                                        newVariations[index] = { ...result, colorTreatment: 'dark-bg' }
+                                    }
+                                })
+                                return newVariations
+                            })
+                        }
                     }
-
-                    const data2 = await response2.json() as BatchGenerateResponse
-
-                    setVariations(prev => {
-                        const newVariations = [...prev]
-                        data2.results.forEach(result => {
-                            const index = newVariations.findIndex(v => v.id === result.id)
-                            if (index !== -1) {
-                                const colorTreatment = result.id.endsWith('-brand') ? 'brand-colors' as const : 'dark-bg' as const
-                                newVariations[index] = { ...result, colorTreatment }
-                            }
-                        })
-                        return newVariations
-                    })
-
-                    console.log(`Phase 2: Batch ${batchIndex + 1}/${batches.length} complete`)
                 }
             }
 

@@ -322,11 +322,13 @@ export function generateLiteralMarkPrompt(options: LiteralMarkPromptOptions): st
       background = "White background"
       break
     case "brand-colors":
-      colors = `${primaryColor}${secondaryColor ? ` and ${secondaryColor}` : ""}`
+      // AI-generated color styles with contrast requirements
+      colors = "Generate a color style (gradient or flat colors). Ensure sufficient contrast on white background"
       background = "White background"
       break
     case "dark-bg":
-      colors = "White"
+      // For dark backgrounds, reference the colored light version and ensure contrast
+      colors = "Ensure sufficient contrast on dark background"
       background = "Dark background"
       break
   }
