@@ -1,6 +1,12 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { generateText } from "ai"
 import { createGateway } from "@ai-sdk/gateway"
+import type {
+  BatchGenerateRequest,
+  BatchGenerateResponse,
+  LogoGenerationRequest,
+  LogoGenerationResult,
+} from "@/types/logo-api"
 
 export const dynamic = "force-dynamic"
 
@@ -20,6 +26,167 @@ interface ErrorResponse {
   details?: string
 }
 
+// Gemini aspect ratio mapping
+const GEMINI_ASPECT_RATIO_MAP: Record<string, string> = {
+  portrait: "9:16",
+  landscape: "16:9",
+  wide: "21:9",
+  "4:3": "4:3",
+  "3:4": "3:4",
+  "3:2": "3:2",
+  "2:3": "2:3",
+  "5:4": "5:4",
+  "4:5": "4:5",
+  square: "1:1",
+  "16:9": "16:9",
+  "1:1": "1:1",
+}
+
+/**
+ * Handle batch logo generation
+ */
+async function handleBatchGeneration(
+  body: BatchGenerateRequest,
+  apiKey: string,
+): Promise<NextResponse<BatchGenerateResponse | ErrorResponse>> {
+  const { requests } = body
+
+  if (!requests || !Array.isArray(requests) || requests.length === 0) {
+    return NextResponse.json<ErrorResponse>(
+      { error: "Batch requests array is required and must not be empty" },
+      { status: 400 },
+    )
+  }
+
+  if (requests.length > 20) {
+    return NextResponse.json<ErrorResponse>(
+      { error: "Maximum 20 batch requests allowed" },
+      { status: 400 },
+    )
+  }
+
+  const gateway = createGateway({
+    apiKey: apiKey,
+  })
+
+  const model = gateway("google/gemini-3-pro-image")
+
+  // Process all requests in parallel
+  const results = await Promise.allSettled(
+    requests.map(async (req: LogoGenerationRequest): Promise<LogoGenerationResult> => {
+      try {
+        const imageUrl = await generateSingleImage(model, req.prompt, req.aspectRatio, req.previousImageUrl)
+
+        return {
+          id: req.id,
+          type: req.type,
+          url: imageUrl,
+          prompt: req.prompt,
+          status: "success",
+        }
+      } catch (error) {
+        return {
+          id: req.id,
+          type: req.type,
+          url: "",
+          prompt: req.prompt,
+          status: "error",
+          error: error instanceof Error ? error.message : "Unknown error",
+        }
+      }
+    }),
+  )
+
+  // Map settled promises to results
+  const logoResults: LogoGenerationResult[] = results.map((result, index) => {
+    if (result.status === "fulfilled") {
+      return result.value
+    } else {
+      return {
+        id: requests[index].id,
+        type: requests[index].type,
+        url: "",
+        prompt: requests[index].prompt,
+        status: "error",
+        error: result.reason instanceof Error ? result.reason.message : "Generation failed",
+      }
+    }
+  })
+
+  return NextResponse.json<BatchGenerateResponse>({
+    results: logoResults,
+  })
+}
+
+/**
+ * Helper function to generate a single image using Gemini
+ */
+async function generateSingleImage(
+  model: any,
+  prompt: string,
+  aspectRatio: string,
+  previousImageUrl?: string,
+): Promise<string> {
+  const geminiAspectRatio = GEMINI_ASPECT_RATIO_MAP[aspectRatio] || "1:1"
+
+  // If there's a previous image (for sequential generation), include it
+  if (previousImageUrl) {
+    const messageParts: Array<{ type: "text" | "image"; text?: string; image?: string }> = []
+
+    messageParts.push({ type: "image", image: previousImageUrl })
+    messageParts.push({ type: "text", text: prompt })
+
+    const result = await generateText({
+      model,
+      messages: [
+        {
+          role: "user",
+          // @ts-ignore - Type issue with content parts
+          content: messageParts,
+        },
+      ],
+      providerOptions: {
+        google: {
+          responseModalities: ["IMAGE"],
+          imageConfig: {
+            aspectRatio: geminiAspectRatio,
+          },
+        },
+      },
+    })
+
+    const imageFiles = result.files?.filter((f) => f.mediaType?.startsWith("image/")) || []
+    if (imageFiles.length === 0) {
+      throw new Error("No image generated from model")
+    }
+
+    const firstImage = imageFiles[0]
+    return `data:${firstImage.mediaType};base64,${firstImage.base64}`
+  } else {
+    // No previous image, generate from prompt only
+    const result = await generateText({
+      model,
+      prompt,
+      providerOptions: {
+        google: {
+          responseModalities: ["IMAGE"],
+          imageConfig: {
+            aspectRatio: geminiAspectRatio,
+          },
+        },
+      },
+    })
+
+    const imageFiles = result.files?.filter((f) => f.mediaType?.startsWith("image/")) || []
+    if (imageFiles.length === 0) {
+      throw new Error("No image generated from model")
+    }
+
+    const firstImage = imageFiles[0]
+    return `data:${firstImage.mediaType};base64,${firstImage.base64}`
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
     const apiKey = process.env.AI_GATEWAY_API_KEY
@@ -34,6 +201,24 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Check if this is a JSON request (batch mode) or FormData (legacy mode)
+    const contentType = request.headers.get("content-type") || ""
+
+    if (contentType.includes("application/json")) {
+      // Handle JSON request for batch mode
+      const body = await request.json()
+
+      if (body.mode === "logo-batch") {
+        return handleBatchGeneration(body as BatchGenerateRequest, apiKey)
+      }
+
+      return NextResponse.json<ErrorResponse>(
+        { error: "Invalid mode for JSON request" },
+        { status: 400 },
+      )
+    }
+
+    // Handle legacy FormData request
     const formData = await request.formData()
     const mode = formData.get("mode") as string
     const prompt = formData.get("prompt") as string
@@ -54,20 +239,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const geminiAspectRatioMap: Record<string, string> = {
-      portrait: "9:16",
-      landscape: "16:9",
-      wide: "21:9",
-      "4:3": "4:3",
-      "3:4": "3:4",
-      "3:2": "3:2",
-      "2:3": "2:3",
-      "5:4": "5:4",
-      "4:5": "4:5",
-      square: "1:1",
-    }
-
-    const geminiAspectRatio = geminiAspectRatioMap[aspectRatio] || "1:1"
+    const geminiAspectRatio = GEMINI_ASPECT_RATIO_MAP[aspectRatio] || "1:1"
 
     const gateway = createGateway({
       apiKey: apiKey,

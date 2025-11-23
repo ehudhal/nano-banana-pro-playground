@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@ai-sdk/gateway": "latest",
+    "@ai-sdk/openai": "latest",
     "@paper-design/shaders-react": "latest",
     "@radix-ui/react-aspect-ratio": "latest",
     "@radix-ui/react-avatar": "latest",
@@ -21,6 +22,7 @@
     "@radix-ui/react-select": "latest",
     "@radix-ui/react-separator": "latest",
     "@radix-ui/react-slot": "latest",
+    "@radix-ui/react-tabs": "^1.1.13",
     "@radix-ui/react-toast": "latest",
     "@radix-ui/react-tooltip": "latest",
     "@vercel/analytics": "latest",

@@ -1,4 +1,5 @@
 import type React from "react"
+
 export interface GeneratedImage {
   url: string
   prompt: string
@@ -15,6 +16,9 @@ export interface Generation {
   timestamp: number
   abortController?: AbortController
   thumbnailLoaded?: boolean
+  createdAt?: string
+  aspectRatio?: string
+  mode?: string
 }
 
 export type AspectRatioOption = {
@@ -22,4 +26,22 @@ export type AspectRatioOption = {
   label: string
   ratio: number
   icon: React.ReactNode
+}
+
+// Logo Creator Types
+export interface LogoConcept {
+  id: string
+  visualObject: string
+  visualStyle: string
+  brandColors: {
+    primary: {
+      name: string
+      hex: string
+    }
+    secondary?: {
+      name: string
+      hex: string
+    }
+  }
+  rationale?: string
 }
