@@ -13,8 +13,17 @@ interface LogoGridProps {
 }
 
 export function LogoGrid({ variations, onRegenerate, onSelect, onReset }: LogoGridProps) {
-    const logomarks = variations.filter(v => v.type === 'logomark')
-    const lettermarks = variations.filter(v => v.type === 'lettermark')
+    const getSectionTitle = (type: string) => {
+        switch (type) {
+            case 'logomark': return 'Logo Marks'
+            case 'literal': return 'Literal Marks'
+            case 'wordmark': return 'Wordmarks'
+            case 'lettermark-derived': return 'Derived Lettermarks'
+            default: return ''
+        }
+    }
+
+    const literals = variations.filter(v => v.type === 'literal')
     const wordmarks = variations.filter(v => v.type === 'wordmark')
 
     const LogoCard = ({ item }: { item: LogoGenerationResult }) => (
@@ -72,9 +81,8 @@ export function LogoGrid({ variations, onRegenerate, onSelect, onReset }: LogoGr
             </div>
 
             <Tabs defaultValue="all" className="w-full">
-                <TabsList className="grid w-full max-w-md grid-cols-4">
+                <TabsList className="grid w-full max-w-md grid-cols-3">
                     <TabsTrigger value="all">All</TabsTrigger>
-                    <TabsTrigger value="marks">Marks</TabsTrigger>
                     <TabsTrigger value="letters">Letters</TabsTrigger>
                     <TabsTrigger value="words">Words</TabsTrigger>
                 </TabsList>
@@ -82,26 +90,20 @@ export function LogoGrid({ variations, onRegenerate, onSelect, onReset }: LogoGr
                 <TabsContent value="all" className="mt-6">
                     <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-3 gap-6">
                         {/* Group by type visually */}
-                        <div className="col-span-full mb-2 font-semibold text-lg">Logo Marks</div>
-                        {logomarks.map(item => <LogoCard key={item.id} item={item} />)}
+                        <div className="col-span-full mb-2 font-semibold text-lg">Literal Marks</div>
+                        {literals.map(item => <LogoCard key={item.id} item={item} />)}
 
-                        <div className="col-span-full mt-6 mb-2 font-semibold text-lg">Lettermarks</div>
-                        {lettermarks.map(item => <LogoCard key={item.id} item={item} />)}
+                        <div className="col-span-full mt-6 mb-2 font-semibold text-lg">Derived Lettermarks</div>
+                        {variations.filter(v => v.type === 'lettermark-derived').map(item => <LogoCard key={item.id} item={item} />)}
 
                         <div className="col-span-full mt-6 mb-2 font-semibold text-lg">Wordmarks</div>
                         {wordmarks.map(item => <LogoCard key={item.id} item={item} />)}
                     </div>
                 </TabsContent>
 
-                <TabsContent value="marks" className="mt-6">
-                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
-                        {logomarks.map(item => <LogoCard key={item.id} item={item} />)}
-                    </div>
-                </TabsContent>
-
                 <TabsContent value="letters" className="mt-6">
                     <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
-                        {lettermarks.map(item => <LogoCard key={item.id} item={item} />)}
+                        {literals.map(item => <LogoCard key={item.id} item={item} />)}
                     </div>
                 </TabsContent>
 

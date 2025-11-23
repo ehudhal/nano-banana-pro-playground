@@ -47,7 +47,7 @@ export interface GenerateConceptsErrorResponse {
 // Logo Generation Types (Batch Mode)
 // ============================================================================
 
-export type LogoArchetype = "logomark" | "lettermark" | "wordmark"
+export type LogoArchetype = "literal" | "wordmark" | "lettermark-enclosed" | "lettermark-derived"
 
 export interface LogoGenerationRequest {
   id: string

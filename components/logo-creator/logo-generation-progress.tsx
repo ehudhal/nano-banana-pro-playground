@@ -15,9 +15,19 @@ export function LogoGenerationProgress({ variations, onCancel }: LogoGenerationP
     const progress = Math.round((completed / total) * 100)
 
     // Group by type for detailed status
-    const logomarks = variations.filter(v => v.type === 'logomark')
-    const lettermarks = variations.filter(v => v.type === 'lettermark')
+    const getLabel = (type: string) => {
+        switch (type) {
+            case 'logomark': return 'Logo Marks'
+            case 'literal': return 'Literal Marks'
+            case 'wordmark': return 'Wordmarks'
+            case 'lettermark-derived': return 'Derived Lettermarks'
+            default: return type
+        }
+    }
+
+    const literals = variations.filter(v => v.type === 'literal')
     const wordmarks = variations.filter(v => v.type === 'wordmark')
+    const lettermarkDerived = variations.filter(v => v.type === 'lettermark-derived')
 
     const getGroupProgress = (group: LogoGenerationResult[], expectedCount: number) => {
         const done = group.filter(v => v.status === 'success' || v.status === 'error').length
@@ -40,23 +50,15 @@ export function LogoGenerationProgress({ variations, onCancel }: LogoGenerationP
             </div>
 
             <div className="space-y-4">
-                <div className="space-y-1">
-                    <div className="flex justify-between text-sm">
-                        <span>Logo Marks</span>
-                        <span className="text-muted-foreground">{logomarks.length}/3</span>
+                {literals.length > 0 && (
+                    <div className="space-y-2">
+                        <div className="flex justify-between text-sm">
+                            <span>Literal Marks</span>
+                            <span className="text-muted-foreground">{getGroupProgress(literals, 3)}</span>
+                        </div>
+                        <Progress value={getGroupProgress(literals, 3)} className="h-2" />
                     </div>
-                    <Progress value={getGroupProgress(logomarks, 3)} className="h-2" />
-                </div>
-
-                <div className="space-y-1">
-                    <div className="flex justify-between text-sm">
-                        <span>Lettermarks</span>
-                        <span className="text-muted-foreground">{lettermarks.length}/3</span>
-                    </div>
-                    <Progress value={getGroupProgress(lettermarks, 3)} className="h-2" />
-                </div>
-
-                <div className="space-y-1">
+                )}     <div className="space-y-1">
                     <div className="flex justify-between text-sm">
                         <span>Wordmarks</span>
                         <span className="text-muted-foreground">{wordmarks.length}/3</span>

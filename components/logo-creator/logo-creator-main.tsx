@@ -20,8 +20,8 @@ export function LogoCreatorMain() {
         generateConcepts,
         selectedConcept,
         selectConcept,
-        logoPrompt,
-        setLogoPrompt,
+        logoPrompts,
+        setLogoPrompts,
         variations,
         isGeneratingLogos,
         generateLogos,
@@ -69,35 +69,66 @@ export function LogoCreatorMain() {
 
             {/* Step 3: Prompt Preview */}
             {currentStep === 'prompt-preview' && selectedConcept && (
-                <div className="max-w-2xl mx-auto space-y-6">
+                <div className="max-w-4xl mx-auto space-y-6">
                     <div className="text-center space-y-2">
                         <h2 className="text-3xl font-bold tracking-tight">Review & Generate</h2>
                         <p className="text-muted-foreground">
-                            We've crafted a prompt based on your selected concept. You can tweak it if you like.
+                            We've crafted prompts for each logo type based on your selected concept. You can tweak them if you like.
                         </p>
                     </div>
 
-                    <Card>
-                        <CardHeader>
-                            <CardTitle>Logo Generation Prompt</CardTitle>
-                        </CardHeader>
-                        <CardContent className="space-y-4">
-                            <Textarea
-                                value={logoPrompt}
-                                onChange={(e) => setLogoPrompt(e.target.value)}
-                                rows={6}
-                                className="resize-none"
-                            />
-                            <div className="flex justify-between gap-4 pt-4">
-                                <Button variant="outline" onClick={goBack}>
-                                    <ArrowLeft className="mr-2 h-4 w-4" /> Back
-                                </Button>
-                                <Button onClick={generateLogos} className="w-full sm:w-auto">
-                                    <Wand2 className="mr-2 h-4 w-4" /> Create Logo Variations
-                                </Button>
-                            </div>
-                        </CardContent>
-                    </Card>
+                    <div className="grid gap-6 md:grid-cols-3">
+                        <Card>
+                            <CardHeader>
+                                <CardTitle className="text-lg">Literal Mark Prompt</CardTitle>
+                            </CardHeader>
+                            <CardContent>
+                                <Textarea
+                                    value={logoPrompts.literal}
+                                    onChange={(e) => setLogoPrompts({ ...logoPrompts, literal: e.target.value })}
+                                    rows={6}
+                                    className="resize-none"
+                                />
+                            </CardContent>
+                        </Card>
+
+                        <Card>
+                            <CardHeader>
+                                <CardTitle className="text-lg">Wordmark Prompt</CardTitle>
+                            </CardHeader>
+                            <CardContent>
+                                <Textarea
+                                    value={logoPrompts.wordmark}
+                                    onChange={(e) => setLogoPrompts({ ...logoPrompts, wordmark: e.target.value })}
+                                    rows={6}
+                                    className="resize-none"
+                                />
+                            </CardContent>
+                        </Card>
+
+                        <Card>
+                            <CardHeader>
+                                <CardTitle className="text-lg">Derived Lettermark</CardTitle>
+                            </CardHeader>
+                            <CardContent>
+                                <Textarea
+                                    value={logoPrompts.lettermarkDerived}
+                                    onChange={(e) => setLogoPrompts({ ...logoPrompts, lettermarkDerived: e.target.value })}
+                                    rows={6}
+                                    className="resize-none"
+                                />
+                            </CardContent>
+                        </Card>
+                    </div>
+
+                    <div className="flex justify-between gap-4 pt-4 max-w-2xl mx-auto">
+                        <Button variant="outline" onClick={goBack}>
+                            <ArrowLeft className="mr-2 h-4 w-4" /> Back
+                        </Button>
+                        <Button onClick={generateLogos} className="w-full sm:w-auto">
+                            <Wand2 className="mr-2 h-4 w-4" /> Create Logo Variations
+                        </Button>
+                    </div>
                 </div>
             )}
 

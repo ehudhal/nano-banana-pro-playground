@@ -36,8 +36,12 @@ interface UseLogoCreationReturn {
     selectConcept: (conceptId: string) => void
 
     // Prompt
-    logoPrompt: string
-    setLogoPrompt: (prompt: string) => void
+    logoPrompts: {
+        literal: string
+        wordmark: string
+        lettermarkDerived: string
+    }
+    setLogoPrompts: (prompts: { literal: string; wordmark: string; lettermarkDerived: string }) => void
 
     // Generation
     variations: LogoGenerationResult[]
@@ -65,7 +69,11 @@ export function useLogoCreation(): UseLogoCreationReturn {
     const [isGeneratingConcepts, setIsGeneratingConcepts] = useState(false)
 
     const [selectedConcept, setSelectedConcept] = useState<LogoConcept | null>(null)
-    const [logoPrompt, setLogoPrompt] = useState("")
+    const [logoPrompts, setLogoPrompts] = useState({
+        literal: "",
+        wordmark: "",
+        lettermarkDerived: ""
+    })
 
     const [variations, setVariations] = useState<LogoGenerationResult[]>([])
     const [isGeneratingLogos, setIsGeneratingLogos] = useState(false)
@@ -104,7 +112,7 @@ export function useLogoCreation(): UseLogoCreationReturn {
         setBrandDetails({ companyName: "", description: "" })
         setConcepts([])
         setSelectedConcept(null)
-        setLogoPrompt("")
+        setLogoPrompts({ literal: "", wordmark: "", lettermarkDerived: "" })
         setVariations([])
         setSelectedVariation(null)
     }, [])
@@ -138,14 +146,31 @@ export function useLogoCreation(): UseLogoCreationReturn {
         const concept = concepts.find(c => c.id === conceptId)
         if (concept) {
             setSelectedConcept(concept)
-            // Generate initial prompt based on concept
-            // Defaulting to a wordmark prompt for the preview, but the actual generation will use specific prompts
-            const initialPrompt = generateLogoPrompt({
+
+            // Generate all prompts
+            const literalPrompt = generateLogoPrompt({
+                companyName: brandDetails.companyName,
+                concept: concept,
+                archetype: 'literal'
+            })
+
+            const wordmarkPrompt = generateLogoPrompt({
                 companyName: brandDetails.companyName,
                 concept: concept,
                 archetype: 'wordmark'
             })
-            setLogoPrompt(initialPrompt)
+
+            const lettermarkDerivedPrompt = generateLogoPrompt({
+                companyName: brandDetails.companyName,
+                concept: concept,
+                archetype: 'lettermark-derived'
+            })
+
+            setLogoPrompts({
+                literal: literalPrompt,
+                wordmark: wordmarkPrompt,
+                lettermarkDerived: lettermarkDerivedPrompt
+            })
             setCurrentStep('prompt-preview')
         }
     }, [concepts, brandDetails.companyName])
@@ -159,64 +184,118 @@ export function useLogoCreation(): UseLogoCreationReturn {
         const controller = new AbortController()
         setAbortController(controller)
 
-        // Prepare batch requests
-        // 3 Logo Marks, 3 Lettermarks, 3 Wordmarks
-        const requests = []
+        // Phase 1: Generate Wordmarks and Literal Marks
+        const phase1Requests = []
 
-        // Logo Marks (Visual Object focused)
+        // Literal Marks
         for (let i = 0; i < 3; i++) {
-            requests.push({
-                id: `logomark-${i}`,
-                type: 'logomark' as LogoArchetype,
-                prompt: `Logo mark for ${brandDetails.companyName}. ${selectedConcept.visualObject}. ${selectedConcept.visualStyle}. Colors: ${selectedConcept.brandColors.primary.name} ${selectedConcept.brandColors.primary.hex}. Minimal, iconic, vector style. No text.`,
-                aspectRatio: '1:1'
-            })
-        }
-
-        // Lettermarks
-        for (let i = 0; i < 3; i++) {
-            requests.push({
-                id: `lettermark-${i}`,
-                type: 'lettermark' as LogoArchetype,
-                prompt: `Lettermark logo for ${brandDetails.companyName}. Initials. ${selectedConcept.visualStyle}. Colors: ${selectedConcept.brandColors.primary.name} ${selectedConcept.brandColors.primary.hex}. Typography focused.`,
+            phase1Requests.push({
+                id: `literal-${i}`,
+                type: 'literal' as LogoArchetype,
+                prompt: logoPrompts.literal,
                 aspectRatio: '1:1'
             })
         }
 
         // Wordmarks
         for (let i = 0; i < 3; i++) {
-            requests.push({
+            phase1Requests.push({
                 id: `wordmark-${i}`,
                 type: 'wordmark' as LogoArchetype,
-                prompt: `Wordmark logo for ${brandDetails.companyName}. Full name. ${selectedConcept.visualStyle}. Colors: ${selectedConcept.brandColors.primary.name} ${selectedConcept.brandColors.primary.hex}. Professional typography.`,
+                prompt: logoPrompts.wordmark,
                 aspectRatio: '16:9'
             })
         }
 
         // Initialize variations with loading state
-        setVariations(requests.map(req => ({
-            id: req.id,
-            type: req.type,
+        // We also add placeholders for the derived lettermarks which will come in Phase 2
+        const derivedPlaceholders = Array.from({ length: 3 }).map((_, i) => ({
+            id: `lettermark-derived-${i}`,
+            type: 'lettermark-derived' as LogoArchetype,
             url: '',
-            prompt: req.prompt,
-            status: 'success' // Temporarily using success to match type, but in reality we'd want a loading state in the UI
-        })))
+            prompt: logoPrompts.lettermarkDerived,
+            status: 'success' // Placeholder
+        }))
+
+        setVariations([
+            ...phase1Requests.map(req => ({
+                id: req.id,
+                type: req.type,
+                url: '',
+                prompt: req.prompt,
+                status: 'success' as const
+            })),
+            ...derivedPlaceholders.map(p => ({ ...p, status: 'success' as const }))
+        ])
 
         try {
-            const response = await fetch('/api/generate-image', {
+            // Execute Phase 1
+            const response1 = await fetch('/api/generate-image', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     mode: 'logo-batch',
-                    requests
+                    requests: phase1Requests
                 } as BatchGenerateRequest),
                 signal: controller.signal
             })
 
-            if (!response.ok) throw new Error('Failed to generate logos')
+            if (!response1.ok) throw new Error('Failed to generate phase 1 logos')
 
-            const data = await response.json() as BatchGenerateResponse
-            setVariations(data.results)
+            const data1 = await response1.json() as BatchGenerateResponse
+
+            // Update variations with Phase 1 results
+            // We keep the derived placeholders for now
+            const phase1Results = data1.results
+            setVariations(prev => {
+                const newVariations = [...prev]
+                phase1Results.forEach(result => {
+                    const index = newVariations.findIndex(v => v.id === result.id)
+                    if (index !== -1) newVariations[index] = result
+                })
+                return newVariations
+            })
+
+            // Phase 2: Generate Derived Lettermarks using the first generated Wordmark
+            const wordmarkResult = phase1Results.find(r => r.type === 'wordmark' && r.url)
+
+            if (wordmarkResult && wordmarkResult.url) {
+                const phase2Requests = []
+                for (let i = 0; i < 3; i++) {
+                    phase2Requests.push({
+                        id: `lettermark-derived-${i}`,
+                        type: 'lettermark-derived' as LogoArchetype,
+                        prompt: logoPrompts.lettermarkDerived,
+                        aspectRatio: '1:1',
+                        previousImageUrl: wordmarkResult.url // Pass the wordmark image
+                    })
+                }
+
+                const response2 = await fetch('/api/generate-image', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        mode: 'logo-batch',
+                        requests: phase2Requests
+                    } as BatchGenerateRequest),
+                    signal: controller.signal
+                })
+
+                if (!response2.ok) throw new Error('Failed to generate phase 2 logos')
+
+                const data2 = await response2.json() as BatchGenerateResponse
+
+                // Update variations with Phase 2 results
+                setVariations(prev => {
+                    const newVariations = [...prev]
+                    data2.results.forEach(result => {
+                        const index = newVariations.findIndex(v => v.id === result.id)
+                        if (index !== -1) newVariations[index] = result
+                    })
+                    return newVariations
+                })
+            }
+
             setCurrentStep('results')
         } catch (error) {
             if (error instanceof Error && error.name === 'AbortError') {
@@ -228,7 +307,7 @@ export function useLogoCreation(): UseLogoCreationReturn {
             setIsGeneratingLogos(false)
             setAbortController(null)
         }
-    }, [brandDetails.companyName, selectedConcept])
+    }, [brandDetails.companyName, selectedConcept, logoPrompts])
 
     const cancelGeneration = useCallback(() => {
         if (abortController) {
@@ -258,8 +337,8 @@ export function useLogoCreation(): UseLogoCreationReturn {
         generateConcepts,
         selectedConcept,
         selectConcept,
-        logoPrompt,
-        setLogoPrompt,
+        logoPrompts,
+        setLogoPrompts,
         variations,
         isGeneratingLogos,
         generateLogos,

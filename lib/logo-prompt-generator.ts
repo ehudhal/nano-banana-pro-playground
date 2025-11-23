@@ -5,7 +5,7 @@
  * Each archetype has configurable options that can be easily extended.
  */
 
-import type { LogoConcept } from "@/components/image-combiner/types"
+import type { LogoConcept, LogoArchetype } from "@/types/logo-api"
 
 // ============================================================================
 // CONFIGURATION - Add new options here
@@ -36,14 +36,17 @@ export const LETTERMARK_SHAPES = [
 
 export type LettermarkShape = typeof LETTERMARK_SHAPES[number]
 
-/**
- * Logo archetype types
- */
-export type LogoArchetype = "wordmark" | "lettermark" | "lettermark-enclosed"
-
 // ============================================================================
 // TYPES
 // ============================================================================
+
+export interface LogomarkPromptOptions {
+  companyName: string
+  visualObject: string
+  visualStyle: string
+  primaryColor: string
+  secondaryColor?: string
+}
 
 export interface WordmarkPromptOptions {
   companyName: string
@@ -56,6 +59,8 @@ export interface LettermarkPromptOptions {
   companyName: string
   enclosingShape?: LettermarkShape | null // null = no enclosure
   additionalStyles?: string[]
+  primaryColor?: string
+  secondaryColor?: string
 }
 
 export interface GenerateLogoPromptsParams {
@@ -171,10 +176,34 @@ export function generateWordmarkPrompt(options: WordmarkPromptOptions): string {
  * Note: This requires the wordmark image as input to the LLM
  */
 export function generateLettermarkPrompt(options: LettermarkPromptOptions): string {
-  const { companyName } = options
+  const {
+    companyName,
+    additionalStyles = [],
+    primaryColor,
+    secondaryColor
+  } = options
   const letters = extractLetters(companyName)
 
-  return `lettermark "${letters}". No extra text. White background.`
+  const parts = [
+    `lettermark "${letters}".`,
+  ]
+
+  if (additionalStyles.length > 0) {
+    parts.push(`${additionalStyles.join(", ")}.`)
+  }
+
+  if (primaryColor) {
+    parts.push(`Primary color: ${primaryColor}.`)
+  }
+
+  if (secondaryColor) {
+    parts.push(`Secondary color: ${secondaryColor}.`)
+  }
+
+  parts.push("No extra text.")
+  parts.push("White background.")
+
+  return parts.join(" ")
 }
 
 /**
@@ -194,6 +223,72 @@ export function generateEnclosedLettermarkPrompt(shape: LettermarkShape): string
 // ============================================================================
 
 /**
+ * Generate derived lettermark prompt (based on wordmark)
+ */
+export function generateDerivedLettermarkPrompt(options: LettermarkPromptOptions): string {
+  const { companyName } = options
+  const letters = extractLetters(companyName)
+
+  return `Create a 1:1 lettermark for "${letters}" derived from the style of the provided wordmark. Maintain the exact same font, weight, and color. Isolate the initials on a white background.`
+}
+
+// ============================================================================
+// MAIN GENERATOR FUNCTION
+// ============================================================================
+
+/**
+ * Generate logo prompt based on archetype and concept
+ *
+ * This is the main entry point for logo prompt generation
+ */
+export type LiteralMarkMode = "straight-forward" | "conceptual" | "continuous-line"
+
+export interface LiteralMarkPromptOptions {
+  companyName: string
+  mode: LiteralMarkMode
+  visualObject?: string
+  visualStyle?: string
+  primaryColor: string
+  secondaryColor?: string
+}
+
+// ... (keep existing interfaces)
+
+/**
+ * Generate literal mark prompt based on mode
+ */
+export function generateLiteralMarkPrompt(options: LiteralMarkPromptOptions): string {
+  const {
+    companyName,
+    mode,
+    visualObject,
+    visualStyle,
+  } = options
+
+  // User requested "Black only" for literal marks
+  const colors = "Colors: Black"
+  const letters = extractLetters(companyName)
+
+  switch (mode) {
+    case "straight-forward":
+      // "Logo mark. Minimalist. Fully flat. Fully white background. No text. [brand colors], [Concept]"
+      // Note: User requested Black only, so we use Black instead of brand colors.
+      return `Logo mark. Minimalist. Fully flat. Fully white background. No text. ${colors}. ${visualStyle || "bold"}. ${visualObject || "Abstract geometric shape"}.`
+
+    case "conceptual":
+      return `Logo mark for ${companyName}. Contemporary minimalism with conceptual depth. ${colors}. ${visualStyle || "bold"}. Full white background. No extra text.`
+
+    case "continuous-line":
+      return `Minimal continuous-line logo mark. Monoline. Use uniform stroke width with fully rounded corners, and visually merge simple concepts ${visualObject || "abstract shapes"}, "${letters}". ${colors}. The result should feel friendly, simple, and easy to recognize at small sizes. Fully white background. Fully flat.`
+
+    default:
+      return `Logo mark for ${companyName}. ${colors}.`
+  }
+}
+
+// ... (keep existing functions)
+
+/**
  * Generate logo prompt based on archetype and concept
  *
  * This is the main entry point for logo prompt generation
@@ -203,6 +298,10 @@ export function generateLogoPrompt(params: GenerateLogoPromptsParams): string {
 
   // Parse concept styles
   const additionalStyles = parseConceptStyles(concept.visualStyle)
+  const primaryColor = `${concept.brandColors.primary.name} ${concept.brandColors.primary.hex}`
+  const secondaryColor = concept.brandColors.secondary
+    ? `${concept.brandColors.secondary.name} ${concept.brandColors.secondary.hex}`
+    : undefined
 
   switch (archetype) {
     case "wordmark": {
@@ -211,21 +310,29 @@ export function generateLogoPrompt(params: GenerateLogoPromptsParams): string {
         companyName,
         adjective,
         additionalStyles,
-        strokeColor: "black", // Could be derived from concept.brandColors
+        strokeColor: concept.brandColors.primary.name, // Use primary color name
       })
     }
 
-    case "lettermark": {
-      return generateLettermarkPrompt({
+    case "literal": {
+      // Default to "straight-forward" mode as per user request
+      return generateLiteralMarkPrompt({
+        companyName,
+        mode: "straight-forward",
+        visualObject: concept.visualObject,
+        visualStyle: concept.visualStyle,
+        primaryColor,
+        secondaryColor
+      })
+    }
+
+    case "lettermark-derived": {
+      return generateDerivedLettermarkPrompt({
         companyName,
         additionalStyles,
+        primaryColor,
+        secondaryColor
       })
-    }
-
-    case "lettermark-enclosed": {
-      // For now, default to circle
-      // In the UI, this would be user-selectable
-      return generateEnclosedLettermarkPrompt("circle")
     }
 
     default:
@@ -278,8 +385,8 @@ export function getLettermarkSequence(
   // Step 2: Generate lettermark from wordmark
   steps.push({
     step: 2,
-    archetype: "lettermark",
-    prompt: generateLettermarkPrompt({ companyName }),
+    archetype: "lettermark-derived",
+    prompt: generateDerivedLettermarkPrompt({ companyName }),
     requiresPreviousImage: true,
     aspectRatio: "1:1",
     description: "Extract lettermark from wordmark",
@@ -318,17 +425,21 @@ export const EXAMPLES = {
     expectedOutput:
       'Wordmark for "Design Rails". Black stroke. Single-line. Fully flat. Handwritten elegance. dynamic. Fully white background. No extra text.',
   },
-  lettermark: {
+  literal: {
     input: {
       companyName: "Design Rails",
+      mode: "conceptual" as LiteralMarkMode,
+      primaryColor: "Black",
     },
-    expectedOutput: 'lettermark "DR". No extra text. White background.',
+    expectedOutput: 'Logo mark for Design Rails. Contemporary minimalism with conceptual depth. Colors: Black. bold. Full white background. No extra text.',
   },
-  lettermarkSingleWord: {
+  literalSingleWord: {
     input: {
       companyName: "Acme",
+      mode: "straight-forward" as LiteralMarkMode,
+      primaryColor: "Black",
     },
-    expectedOutput: 'lettermark "A". No extra text. White background.',
+    expectedOutput: 'Logo mark. Minimalist. Fully flat. Fully white background. No text. Colors: Black. Abstract geometric shape.',
   },
   enclosedCircle: {
     input: "circle" as LettermarkShape,
