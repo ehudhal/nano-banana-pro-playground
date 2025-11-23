@@ -16,6 +16,10 @@ import type { LogoConcept, LogoArchetype } from "@/types/logo-api"
  * Add new styles to this array to extend wordmark options
  */
 export const WORDMARK_ADJECTIVES = [
+  "Sans-serif",
+  "Serif",
+  "Geometric",
+  "Wide/Extended",
   "Ligature-heavy",
   "Handwritten elegance",
   "Script/Calligraphic",
@@ -103,6 +107,18 @@ export function selectWordmarkAdjective(conceptStyle: string): WordmarkAdjective
   const style = conceptStyle.toLowerCase()
 
   // Style matching logic
+  if (style.includes("serif") && !style.includes("sans")) {
+    return "Serif"
+  }
+  if (style.includes("sans") || style.includes("clean") || style.includes("minimal")) {
+    return "Sans-serif"
+  }
+  if (style.includes("geometric") || style.includes("shape")) {
+    return "Geometric"
+  }
+  if (style.includes("wide") || style.includes("extended") || style.includes("bold") || style.includes("impactful")) {
+    return "Wide/Extended"
+  }
   if (style.includes("script") || style.includes("calligraph") || style.includes("flowing")) {
     return "Script/Calligraphic"
   }
@@ -119,8 +135,8 @@ export function selectWordmarkAdjective(conceptStyle: string): WordmarkAdjective
     return "Ligature-heavy"
   }
 
-  // Default to ligature-heavy for modern/minimal styles
-  return "Ligature-heavy"
+  // Default to sans-serif for simple/clean styles
+  return "Sans-serif"
 }
 
 /**
