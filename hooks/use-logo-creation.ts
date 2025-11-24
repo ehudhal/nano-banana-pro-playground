@@ -35,6 +35,7 @@ interface UseLogoCreationReturn {
     // Selected concept
     selectedConcept: LogoConcept | null
     selectConcept: (conceptId: string) => void
+    updateConcept: (concept: LogoConcept) => void
 
     // Prompt
     logoPrompts: {
@@ -179,6 +180,13 @@ export function useLogoCreation(): UseLogoCreationReturn {
             setCurrentStep('prompt-preview')
         }
     }, [concepts, brandDetails.companyName])
+
+    const updateConcept = useCallback((updatedConcept: LogoConcept) => {
+        setConcepts(prev => prev.map(c => c.id === updatedConcept.id ? updatedConcept : c))
+        if (selectedConcept?.id === updatedConcept.id) {
+            setSelectedConcept(updatedConcept)
+        }
+    }, [selectedConcept])
 
     const generateLogos = useCallback(async () => {
         if (!selectedConcept) return
@@ -467,6 +475,7 @@ export function useLogoCreation(): UseLogoCreationReturn {
         generateConcepts,
         selectedConcept,
         selectConcept,
+        updateConcept,
         logoPrompts,
         setLogoPrompts,
         variations,

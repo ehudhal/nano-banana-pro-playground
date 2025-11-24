@@ -20,6 +20,7 @@ export function LogoCreatorMain() {
         generateConcepts,
         selectedConcept,
         selectConcept,
+        updateConcept,
         logoPrompts,
         setLogoPrompts,
         variations,
@@ -63,6 +64,7 @@ export function LogoCreatorMain() {
                     concepts={concepts}
                     selectedConcept={selectedConcept}
                     onSelect={selectConcept}
+                    onUpdateConcept={updateConcept}
                     onBack={goBack}
                 />
             )}

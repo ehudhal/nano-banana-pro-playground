@@ -10,18 +10,18 @@ import type {
 
 export const dynamic = "force-dynamic"
 
-const SYSTEM_PROMPT = `You are a brand identity expert. Generate 3 distinct visual concepts for a logo.
+const SYSTEM_PROMPT = `You are a brand identity expert. Generate 5 distinct visual concepts for a logo.
 
 For each concept, provide:
 1. Visual Object: A concrete visual element (1-5 words, NO letters or text)
-   Examples: "sun touching horizon", "intersecting circles", "mountain peak"
+    Examples: "sun touching horizon", "intersecting circles", "mountain peak"
 
 2. Visual Style: Aesthetic direction (up to 3 words)
-   Examples: "Bold, Geometric", "Organic, Flowing", "Minimal, Sharp"
+    Examples: "Bold, Geometric", "Organic, Flowing", "Minimal, Sharp"
 
 3. Brand Colors: 1-2 colors with hex values
-   Format: "ColorName #HEXCODE and ColorName #HEXCODE"
-   Examples: "Navy Blue #1E3A8A and Coral #FF6B6B"
+    Format: "ColorName #HEXCODE and ColorName #HEXCODE"
+    Examples: "Navy Blue #1E3A8A and Coral #FF6B6B"
 
 Ensure concepts are:
 - Visually distinct from each other
@@ -32,18 +32,18 @@ Ensure concepts are:
 
 Return ONLY valid JSON with this exact structure:
 {
-  "concepts": [
+    "concepts": [
     {
-      "id": "concept-1",
-      "visualObject": "...",
-      "visualStyle": "...",
-      "brandColors": {
+        "id": "concept-1",
+        "visualObject": "...",
+        "visualStyle": "...",
+        "brandColors": {
         "primary": {"name": "...", "hex": "#..."},
         "secondary": {"name": "...", "hex": "#..."}
-      },
-      "rationale": "..."
+        },
+        "rationale": "..."
     }
-  ]
+    ]
 }`
 
 export async function POST(request: NextRequest) {
@@ -104,7 +104,7 @@ export async function POST(request: NextRequest) {
     const userPrompt = `Company: ${companyName}
 Description: ${description}
 
-Generate 3 distinct visual concepts for this brand's logo.`
+Generate 5 distinct visual concepts for this brand's logo.`
 
     const result = await generateText({
       model: gateway("openai/gpt-4o"), // Use GPT-4o via gateway
@@ -147,12 +147,12 @@ Generate 3 distinct visual concepts for this brand's logo.`
       )
     }
 
-    if (parsedResponse.concepts.length !== 3) {
-      console.warn(`Expected 3 concepts, got ${parsedResponse.concepts.length}`)
+    if (parsedResponse.concepts.length !== 5) {
+      console.warn(`Expected 5 concepts, got ${parsedResponse.concepts.length}`)
     }
 
     // Ensure all concepts have required fields
-    const validatedConcepts = parsedResponse.concepts.slice(0, 3).map((concept, index) => ({
+    const validatedConcepts = parsedResponse.concepts.slice(0, 5).map((concept, index) => ({
       id: concept.id || `concept-${index + 1}`,
       visualObject: concept.visualObject || "",
       visualStyle: concept.visualStyle || "",

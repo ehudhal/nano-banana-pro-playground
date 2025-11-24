@@ -77,7 +77,7 @@ export function BrandInputSection({
                             value={brandDetails.companyName}
                             onChange={(e) => setBrandDetails({ ...brandDetails, companyName: e.target.value })}
                             maxLength={50}
-                            className={errors.companyName ? "border-destructive" : ""}
+                            className={`${errors.companyName ? "border-destructive" : "border-primary/20"} bg-secondary/30 focus-visible:bg-background transition-colors h-12 text-lg`}
                         />
                         <div className="flex justify-between text-xs">
                             <span className="text-destructive">{errors.companyName}</span>
@@ -93,7 +93,7 @@ export function BrandInputSection({
                             value={brandDetails.description}
                             onChange={(e) => setBrandDetails({ ...brandDetails, description: e.target.value })}
                             maxLength={200}
-                            className={`resize-none ${errors.description ? "border-destructive" : ""}`}
+                            className={`resize-none ${errors.description ? "border-destructive" : "border-primary/20"} bg-secondary/30 focus-visible:bg-background transition-colors min-h-[100px] text-base`}
                             rows={3}
                         />
                         <div className="flex justify-between text-xs">
