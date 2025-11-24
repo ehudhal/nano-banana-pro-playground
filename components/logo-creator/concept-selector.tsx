@@ -37,16 +37,17 @@ export function ConceptSelector({
                     return (
                         <Card
                             key={concept.id}
-                            className={`transition-all hover:border-primary ${isSelected ? "border-primary ring-2 ring-primary ring-offset-2" : ""
+                            className={`transition-all hover:border-primary cursor-pointer relative flex flex-col ${isSelected ? "border-primary ring-2 ring-primary ring-offset-2" : ""
                                 }`}
+                            onClick={() => onSelect(concept.id)}
                         >
-                            <CardHeader className="pb-2 cursor-pointer" onClick={() => onSelect(concept.id)}>
+                            <CardHeader className="pb-2">
                                 <div className="flex justify-between items-start">
                                     <CardTitle className="text-lg">Concept {concept.id.split('-').pop()}</CardTitle>
                                     {isSelected && <Badge variant="default"><Check className="h-3 w-3 mr-1" /> Selected</Badge>}
                                 </div>
                             </CardHeader>
-                            <CardContent className="space-y-4">
+                            <CardContent className="space-y-4 flex-1 flex flex-col">
                                 <div className="space-y-1.5">
                                     <label className="text-xs font-medium text-muted-foreground">Visual Object</label>
                                     <Input
@@ -152,6 +153,19 @@ export function ConceptSelector({
                                         className="min-h-[60px] text-xs resize-none"
                                         onClick={(e) => e.stopPropagation()}
                                     />
+                                </div>
+
+                                <div className="pt-4 mt-auto">
+                                    <Button
+                                        className="w-full"
+                                        variant={isSelected ? "secondary" : "default"}
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            onSelect(concept.id);
+                                        }}
+                                    >
+                                        {isSelected ? "Selected" : "Select this Concept"}
+                                    </Button>
                                 </div>
                             </CardContent>
                         </Card>

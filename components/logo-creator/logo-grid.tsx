@@ -10,9 +10,10 @@ interface LogoGridProps {
     onRegenerate: (id: string) => void
     onSelect: (id: string) => void
     onReset: () => void
+    onAssemble: () => void
 }
 
-export function LogoGrid({ variations, onRegenerate, onSelect, onReset }: LogoGridProps) {
+export function LogoGrid({ variations, onRegenerate, onSelect, onReset, onAssemble }: LogoGridProps) {
     const getSectionTitle = (type: string) => {
         switch (type) {
             case 'logomark': return 'Logo Marks'
@@ -77,6 +78,7 @@ export function LogoGrid({ variations, onRegenerate, onSelect, onReset }: LogoGr
                 </div>
                 <div className="flex gap-2">
                     <Button variant="outline" onClick={onReset}>Start Over</Button>
+                    <Button onClick={onAssemble}>Proceed to Assembly</Button>
                 </div>
             </div>
 

@@ -9,43 +9,33 @@ interface LogoGenerationProgressProps {
 }
 
 export function LogoGenerationProgress({ variations, onCancel }: LogoGenerationProgressProps) {
-    // Calculate progress
-    const total = 9 // We know we're generating 9 variations
-    const completed = variations.filter(v => v.status === 'success' || v.status === 'error').length
-    const progress = Math.round((completed / total) * 100)
+    // Calculate counts
+    const completedCount = variations.filter(v => v.status === 'success' || v.status === 'error').length
+    const totalCount = variations.length
 
     // Group by type for detailed status
-    const getLabel = (type: string) => {
-        switch (type) {
-            case 'logomark': return 'Logo Marks'
-            case 'literal': return 'Literal Marks'
-            case 'wordmark': return 'Wordmarks'
-            case 'lettermark-derived': return 'Derived Lettermarks'
-            default: return type
-        }
-    }
-
     const literals = variations.filter(v => v.type === 'literal')
     const wordmarks = variations.filter(v => v.type === 'wordmark')
-    const lettermarkDerived = variations.filter(v => v.type === 'lettermark-derived')
 
-    const getGroupProgress = (group: LogoGenerationResult[], expectedCount: number) => {
-        const done = group.filter(v => v.status === 'success' || v.status === 'error').length
-        return Math.round((done / expectedCount) * 100)
+    // Helper to get counts for a group
+    const getGroupStatus = (group: LogoGenerationResult[]) => {
+        const completed = group.filter(v => v.status === 'success' || v.status === 'error').length
+        const total = group.length
+        return { completed, total }
     }
+
+    const literalStatus = getGroupStatus(literals)
+    const wordmarkStatus = getGroupStatus(wordmarks)
 
     return (
         <div className="w-full max-w-md mx-auto space-y-8 py-12">
             <div className="text-center space-y-4">
                 <div className="relative inline-flex">
                     <Loader2 className="h-12 w-12 animate-spin text-primary" />
-                    <div className="absolute inset-0 flex items-center justify-center text-xs font-bold">
-                        {progress}%
-                    </div>
                 </div>
                 <h2 className="text-2xl font-bold">Creating your logo variations...</h2>
                 <p className="text-muted-foreground">
-                    Our AI is generating 9 unique designs based on your concept.
+                    Generated {completedCount} variations so far
                 </p>
             </div>
 
@@ -54,17 +44,31 @@ export function LogoGenerationProgress({ variations, onCancel }: LogoGenerationP
                     <div className="space-y-2">
                         <div className="flex justify-between text-sm">
                             <span>Literal Marks</span>
-                            <span className="text-muted-foreground">{getGroupProgress(literals, 3)}</span>
+                            <span className="text-muted-foreground">
+                                {literalStatus.completed}/{literalStatus.total}
+                            </span>
                         </div>
-                        <Progress value={getGroupProgress(literals, 3)} className="h-2" />
+                        <Progress
+                            value={literalStatus.total > 0 ? (literalStatus.completed / literalStatus.total) * 100 : 0}
+                            className="h-2"
+                        />
                     </div>
-                )}     <div className="space-y-1">
-                    <div className="flex justify-between text-sm">
-                        <span>Wordmarks</span>
-                        <span className="text-muted-foreground">{wordmarks.length}/3</span>
+                )}
+
+                {wordmarks.length > 0 && (
+                    <div className="space-y-2">
+                        <div className="flex justify-between text-sm">
+                            <span>Wordmarks</span>
+                            <span className="text-muted-foreground">
+                                {wordmarkStatus.completed}/{wordmarkStatus.total}
+                            </span>
+                        </div>
+                        <Progress
+                            value={wordmarkStatus.total > 0 ? (wordmarkStatus.completed / wordmarkStatus.total) * 100 : 0}
+                            className="h-2"
+                        />
                     </div>
-                    <Progress value={getGroupProgress(wordmarks, 3)} className="h-2" />
-                </div>
+                )}
             </div>
 
             <div className="flex justify-center">

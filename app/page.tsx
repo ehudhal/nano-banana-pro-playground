@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button"
 import { ImageIcon, PenTool } from "lucide-react"
 
 export default function Home() {
-  const [mode, setMode] = useState<'image-generator' | 'logo-creator'>('image-generator')
+  const [mode, setMode] = useState<'image-generator' | 'logo-creator'>('logo-creator')
 
   return (
     <main className="min-h-screen bg-background flex flex-col">

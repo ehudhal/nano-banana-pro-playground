@@ -5,6 +5,7 @@ import { BrandInputSection } from "./brand-input-section"
 import { ConceptSelector } from "./concept-selector"
 import { LogoGenerationProgress } from "./logo-generation-progress"
 import { LogoGrid } from "./logo-grid"
+import { FinalAssembly } from "./final-assembly"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -28,9 +29,14 @@ export function LogoCreatorMain() {
         generateLogos,
         cancelGeneration,
         regenerateVariation,
+        goToStep,
         goBack,
         reset,
-        selectVariation
+        selectVariation,
+        selectedLiteralMarkId,
+        selectedWordmarkId,
+        selectLiteralMark,
+        selectWordmark
     } = useLogoCreation()
 
     return (
@@ -45,6 +51,8 @@ export function LogoCreatorMain() {
                     <span className={currentStep === 'prompt-preview' ? "font-bold text-primary" : ""}>Preview</span>
                     <span>→</span>
                     <span className={currentStep === 'generation' || currentStep === 'results' ? "font-bold text-primary" : ""}>Results</span>
+                    <span>→</span>
+                    <span className={currentStep === 'final-assembly' ? "font-bold text-primary" : ""}>Assembly</span>
                 </div>
             </div>
 
@@ -148,6 +156,19 @@ export function LogoCreatorMain() {
                     variations={variations}
                     onRegenerate={regenerateVariation}
                     onSelect={selectVariation}
+                    onReset={reset}
+                    onAssemble={() => goToStep('final-assembly')}
+                />
+            )}
+
+            {/* Step 6: Final Assembly */}
+            {currentStep === 'final-assembly' && (
+                <FinalAssembly
+                    variations={variations}
+                    selectedLiteralMarkId={selectedLiteralMarkId}
+                    selectedWordmarkId={selectedWordmarkId}
+                    onSelectLiteralMark={selectLiteralMark}
+                    onSelectWordmark={selectWordmark}
                     onReset={reset}
                 />
             )}

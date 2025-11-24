@@ -67,9 +67,11 @@ export interface LogoGenerationResult {
   type: LogoArchetype
   url: string
   prompt: string
-  status: "success" | "error"
+  status: "success" | "error" | "pending"
   colorTreatment?: "black" | "brand-colors" | "dark-bg"
   error?: string
+  parentId?: string
+  theme?: 'light' | 'dark'
 }
 
 export interface BatchGenerateResponse {

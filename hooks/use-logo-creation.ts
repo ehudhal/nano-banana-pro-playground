@@ -18,6 +18,7 @@ export type LogoCreationStep =
     | 'prompt-preview'
     | 'generation'
     | 'results'
+    | 'final-assembly'
 
 interface UseLogoCreationReturn {
     // Current step in workflow
@@ -57,9 +58,15 @@ interface UseLogoCreationReturn {
     goBack: () => void
     reset: () => void
 
-    // Selected result
+    // Selected result (Legacy/General)
     selectedVariation: LogoGenerationResult | null
     selectVariation: (id: string) => void
+
+    // Final Assembly Selection
+    selectedLiteralMarkId: string | null
+    selectedWordmarkId: string | null
+    selectLiteralMark: (id: string) => void
+    selectWordmark: (id: string) => void
 }
 
 export function useLogoCreation(): UseLogoCreationReturn {
@@ -83,6 +90,10 @@ export function useLogoCreation(): UseLogoCreationReturn {
 
     const [selectedVariation, setSelectedVariation] = useState<LogoGenerationResult | null>(null)
 
+    // Final Assembly State
+    const [selectedLiteralMarkId, setSelectedLiteralMarkId] = useState<string | null>(null)
+    const [selectedWordmarkId, setSelectedWordmarkId] = useState<string | null>(null)
+
     // Navigation helpers
     const goToStep = useCallback((step: LogoCreationStep) => {
         setCurrentStep(step)
@@ -104,6 +115,9 @@ export function useLogoCreation(): UseLogoCreationReturn {
             case 'results':
                 setCurrentStep('prompt-preview')
                 break
+            case 'final-assembly':
+                setCurrentStep('results')
+                break
             default:
                 break
         }
@@ -117,6 +131,8 @@ export function useLogoCreation(): UseLogoCreationReturn {
         setLogoPrompts({ literal: "", wordmark: "", lettermarkDerived: "" })
         setVariations([])
         setSelectedVariation(null)
+        setSelectedLiteralMarkId(null)
+        setSelectedWordmarkId(null)
     }, [])
 
     // API Interactions
@@ -246,7 +262,7 @@ export function useLogoCreation(): UseLogoCreationReturn {
                 type: req.type,
                 url: '',
                 prompt: req.prompt,
-                status: 'success' as const,
+                status: 'pending' as const,
                 colorTreatment: 'black' as const
             }))
 
@@ -333,7 +349,7 @@ export function useLogoCreation(): UseLogoCreationReturn {
                     type: req.type,
                     url: '',
                     prompt: req.prompt,
-                    status: 'success' as const,
+                    status: 'pending' as const,
                     colorTreatment: 'brand-colors' as const
                 }))
             ])
@@ -399,7 +415,7 @@ export function useLogoCreation(): UseLogoCreationReturn {
                             type: req.type,
                             url: '',
                             prompt: req.prompt,
-                            status: 'success' as const,
+                            status: 'pending' as const,
                             colorTreatment: 'dark-bg' as const
                         }))
                     ])
@@ -466,6 +482,14 @@ export function useLogoCreation(): UseLogoCreationReturn {
         setSelectedVariation(variation || null)
     }, [variations])
 
+    const selectLiteralMark = useCallback((id: string) => {
+        setSelectedLiteralMarkId(id)
+    }, [])
+
+    const selectWordmark = useCallback((id: string) => {
+        setSelectedWordmarkId(id)
+    }, [])
+
     return {
         currentStep,
         brandDetails,
@@ -487,6 +511,10 @@ export function useLogoCreation(): UseLogoCreationReturn {
         goBack,
         reset,
         selectedVariation,
-        selectVariation
+        selectVariation,
+        selectedLiteralMarkId,
+        selectedWordmarkId,
+        selectLiteralMark,
+        selectWordmark
     }
 }
