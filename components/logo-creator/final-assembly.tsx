@@ -127,15 +127,20 @@ function saveVectorizedLogos(logos: VectorizedLogos) {
 }
 
 // Fixed frame dimensions (the dashed placeholder sizes)
+// These are base sizes that get scaled up to fill the preview container
 const FRAME = {
     // Mark frame: square
-    markSize: 80, // 80x80 pixels
+    markSize: 80, // 80x80 pixels base
     // Wordmark frame: wider rectangle
     wordmarkWidth: 160,
     wordmarkHeight: 48,
     // Gap between mark and wordmark
     gap: 16,
 }
+
+// Scale factor to make the logo lockup fill more of the preview card
+// The preview card is aspect-video (16:9), so we want the lockup to use ~60-70% of the width
+const PREVIEW_SCALE = 2.0
 
 export function FinalAssembly({
     variations,
@@ -395,15 +400,21 @@ export function FinalAssembly({
         const wordmarkBBox = wordmarkVectorStatus?.wordmarkBBox
         const markBBox = literalVectorStatus?.brandBBox || literalVectorStatus?.darkBBox
 
+        // Apply preview scale to base dimensions
+        const baseMarkSize = FRAME.markSize * PREVIEW_SCALE
+        const baseWordmarkWidth = FRAME.wordmarkWidth * PREVIEW_SCALE
+        const baseWordmarkHeight = FRAME.wordmarkHeight * PREVIEW_SCALE
+        const baseGap = FRAME.gap * PREVIEW_SCALE
+
         // Default frame dimensions (when nothing is selected or no SVG yet)
         const defaultLayout = {
-            scaleFactor: 1,
-            markSize: FRAME.markSize,
-            markWidth: FRAME.markSize,
-            markHeight: FRAME.markSize,
-            wordmarkWidth: FRAME.wordmarkWidth,
-            wordmarkHeight: FRAME.wordmarkHeight,
-            gap: FRAME.gap,
+            scaleFactor: PREVIEW_SCALE,
+            markSize: baseMarkSize,
+            markWidth: baseMarkSize,
+            markHeight: baseMarkSize,
+            wordmarkWidth: baseWordmarkWidth,
+            wordmarkHeight: baseWordmarkHeight,
+            gap: baseGap,
         }
 
         if (!wordmarkBBox) {
@@ -415,17 +426,17 @@ export function FinalAssembly({
 
         // The wordmark height should fill the frame height
         // Calculate what width that would produce
-        const targetWordmarkHeight = FRAME.wordmarkHeight
+        const targetWordmarkHeight = baseWordmarkHeight
         const naturalWordmarkWidth = targetWordmarkHeight * wordmarkAspectRatio
 
         // If the wordmark would exceed the frame width, we need to scale down
-        let scaleFactor = 1
-        if (naturalWordmarkWidth > FRAME.wordmarkWidth) {
-            scaleFactor = FRAME.wordmarkWidth / naturalWordmarkWidth
+        let scaleFactor = PREVIEW_SCALE
+        if (naturalWordmarkWidth > baseWordmarkWidth) {
+            scaleFactor = PREVIEW_SCALE * (baseWordmarkWidth / naturalWordmarkWidth)
         }
 
         // Apply scale factor to all dimensions
-        const scaledWordmarkHeight = targetWordmarkHeight * scaleFactor
+        const scaledWordmarkHeight = FRAME.wordmarkHeight * scaleFactor
         const scaledWordmarkWidth = scaledWordmarkHeight * wordmarkAspectRatio
 
         // Calculate mark dimensions - preserve aspect ratio if we have bbox
@@ -540,7 +551,7 @@ export function FinalAssembly({
                             // Dashed placeholder for mark
                             <div
                                 className="rounded-lg border-2 border-dashed border-gray-200 flex items-center justify-center text-gray-300 text-xs text-center p-2 flex-shrink-0"
-                                style={{ width: FRAME.markSize, height: FRAME.markSize }}
+                                style={{ width: layout.markSize, height: layout.markSize }}
                             >
                                 Symbol
                             </div>
@@ -559,7 +570,7 @@ export function FinalAssembly({
                         ) : selectedWordmark && wordmarkVectorStatus?.isVectorizing ? (
                             <div
                                 className="flex items-center justify-center flex-shrink-0"
-                                style={{ width: FRAME.wordmarkWidth, height: FRAME.wordmarkHeight }}
+                                style={{ width: layout.wordmarkWidth, height: layout.wordmarkHeight }}
                             >
                                 <Loader2 className="w-5 h-5 animate-spin text-gray-300" />
                             </div>
@@ -569,13 +580,13 @@ export function FinalAssembly({
                                 src={selectedWordmark.url}
                                 alt="Selected Wordmark"
                                 className="object-contain flex-shrink-0"
-                                style={{ width: FRAME.wordmarkWidth, height: FRAME.wordmarkHeight }}
+                                style={{ width: layout.wordmarkWidth, height: layout.wordmarkHeight }}
                             />
                         ) : (
                             // Dashed placeholder for wordmark
                             <div
                                 className="rounded border-2 border-dashed border-gray-200 flex items-center justify-center text-gray-300 text-xs flex-shrink-0"
-                                style={{ width: FRAME.wordmarkWidth, height: FRAME.wordmarkHeight }}
+                                style={{ width: layout.wordmarkWidth, height: layout.wordmarkHeight }}
                             >
                                 Wordmark
                             </div>
@@ -657,7 +668,7 @@ export function FinalAssembly({
                             // Dashed placeholder
                             <div
                                 className="rounded-lg border-2 border-dashed border-slate-800 flex items-center justify-center text-slate-700 text-xs text-center p-2 flex-shrink-0"
-                                style={{ width: FRAME.markSize, height: FRAME.markSize }}
+                                style={{ width: layout.markSize, height: layout.markSize }}
                             >
                                 Symbol
                             </div>
@@ -676,7 +687,7 @@ export function FinalAssembly({
                         ) : selectedWordmark && wordmarkVectorStatus?.isVectorizing ? (
                             <div
                                 className="flex items-center justify-center flex-shrink-0"
-                                style={{ width: FRAME.wordmarkWidth, height: FRAME.wordmarkHeight }}
+                                style={{ width: layout.wordmarkWidth, height: layout.wordmarkHeight }}
                             >
                                 <Loader2 className="w-5 h-5 animate-spin text-slate-600" />
                             </div>
@@ -686,13 +697,13 @@ export function FinalAssembly({
                                 src={selectedWordmark.url}
                                 alt="Selected Wordmark"
                                 className="object-contain invert filter flex-shrink-0"
-                                style={{ width: FRAME.wordmarkWidth, height: FRAME.wordmarkHeight }}
+                                style={{ width: layout.wordmarkWidth, height: layout.wordmarkHeight }}
                             />
                         ) : (
                             // Dashed placeholder
                             <div
                                 className="rounded border-2 border-dashed border-slate-800 flex items-center justify-center text-slate-700 text-xs flex-shrink-0"
-                                style={{ width: FRAME.wordmarkWidth, height: FRAME.wordmarkHeight }}
+                                style={{ width: layout.wordmarkWidth, height: layout.wordmarkHeight }}
                             >
                                 Wordmark
                             </div>
