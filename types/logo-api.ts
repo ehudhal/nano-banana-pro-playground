@@ -72,6 +72,10 @@ export interface LogoGenerationResult {
   error?: string
   parentId?: string
   theme?: 'light' | 'dark'
+  /** SVG content for vectorized logos (transparent background) */
+  svg?: string
+  /** Indicates if vectorization is in progress */
+  vectorizing?: boolean
 }
 
 export interface BatchGenerateResponse {

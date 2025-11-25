@@ -20,6 +20,67 @@ export type LogoCreationStep =
     | 'results'
     | 'final-assembly'
 
+// IndexedDB for test mode (localStorage is too small for base64 images)
+const DB_NAME = 'logo_creator_test_db'
+const STORE_NAME = 'test_data'
+const DB_VERSION = 1
+
+interface SavedTestData {
+    brandDetails: BrandInput
+    concepts: LogoConcept[]
+    selectedConcept: LogoConcept | null
+    variations: LogoGenerationResult[]
+    savedAt: string
+}
+
+// IndexedDB helpers
+function openDB(): Promise<IDBDatabase> {
+    return new Promise((resolve, reject) => {
+        const request = indexedDB.open(DB_NAME, DB_VERSION)
+        request.onerror = () => reject(request.error)
+        request.onsuccess = () => resolve(request.result)
+        request.onupgradeneeded = (event) => {
+            const db = (event.target as IDBOpenDBRequest).result
+            if (!db.objectStoreNames.contains(STORE_NAME)) {
+                db.createObjectStore(STORE_NAME)
+            }
+        }
+    })
+}
+
+async function saveToIndexedDB(data: SavedTestData): Promise<void> {
+    const db = await openDB()
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction(STORE_NAME, 'readwrite')
+        const store = transaction.objectStore(STORE_NAME)
+        const request = store.put(data, 'testData')
+        request.onerror = () => reject(request.error)
+        request.onsuccess = () => resolve()
+        transaction.oncomplete = () => db.close()
+    })
+}
+
+async function loadFromIndexedDB(): Promise<SavedTestData | null> {
+    const db = await openDB()
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction(STORE_NAME, 'readonly')
+        const store = transaction.objectStore(STORE_NAME)
+        const request = store.get('testData')
+        request.onerror = () => reject(request.error)
+        request.onsuccess = () => resolve(request.result || null)
+        transaction.oncomplete = () => db.close()
+    })
+}
+
+async function checkIndexedDBHasData(): Promise<boolean> {
+    try {
+        const data = await loadFromIndexedDB()
+        return data !== null
+    } catch {
+        return false
+    }
+}
+
 interface UseLogoCreationReturn {
     // Current step in workflow
     currentStep: LogoCreationStep
@@ -67,6 +128,11 @@ interface UseLogoCreationReturn {
     selectedWordmarkId: string | null
     selectLiteralMark: (id: string) => void
     selectWordmark: (id: string) => void
+
+    // Test mode - save/load state
+    saveTestData: () => Promise<void>
+    loadTestData: () => Promise<boolean>
+    hasTestData: boolean
 }
 
 export function useLogoCreation(): UseLogoCreationReturn {
@@ -490,6 +556,58 @@ export function useLogoCreation(): UseLogoCreationReturn {
         setSelectedWordmarkId(id)
     }, [])
 
+    // Test mode: Save current state to IndexedDB
+    const saveTestData = useCallback(async () => {
+        try {
+            const testData: SavedTestData = {
+                brandDetails,
+                concepts,
+                selectedConcept,
+                variations,
+                savedAt: new Date().toISOString()
+            }
+            await saveToIndexedDB(testData)
+            console.log('[TEST MODE] Saved test data with', variations.length, 'variations')
+            alert(`Test data saved! ${variations.length} variations stored.`)
+            setHasTestData(true)
+        } catch (error) {
+            console.error('[TEST MODE] Failed to save test data:', error)
+            alert('Failed to save test data: ' + (error instanceof Error ? error.message : 'Unknown error'))
+        }
+    }, [brandDetails, concepts, selectedConcept, variations])
+
+    // Test mode: Load state from IndexedDB
+    const loadTestData = useCallback(async () => {
+        try {
+            const testData = await loadFromIndexedDB()
+            if (!testData) {
+                console.log('[TEST MODE] No saved test data found')
+                return false
+            }
+
+            console.log('[TEST MODE] Loading test data from', testData.savedAt)
+            console.log('[TEST MODE] Variations:', testData.variations.length)
+
+            setBrandDetails(testData.brandDetails)
+            setConcepts(testData.concepts)
+            setSelectedConcept(testData.selectedConcept)
+            setVariations(testData.variations)
+            setCurrentStep('final-assembly')
+
+            console.log('[TEST MODE] Test data loaded successfully!')
+            return true
+        } catch (error) {
+            console.error('[TEST MODE] Failed to load test data:', error)
+            return false
+        }
+    }, [])
+
+    // Check if test data exists
+    const [hasTestData, setHasTestData] = useState(false)
+    useEffect(() => {
+        checkIndexedDBHasData().then(setHasTestData)
+    }, [])
+
     return {
         currentStep,
         brandDetails,
@@ -515,6 +633,9 @@ export function useLogoCreation(): UseLogoCreationReturn {
         selectedLiteralMarkId,
         selectedWordmarkId,
         selectLiteralMark,
-        selectWordmark
+        selectWordmark,
+        saveTestData,
+        loadTestData,
+        hasTestData
     }
 }

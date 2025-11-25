@@ -5,20 +5,25 @@ import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
-import { Loader2 } from "lucide-react"
+import { Loader2, FlaskConical } from "lucide-react"
 
 interface BrandInputSectionProps {
     brandDetails: BrandInput
     setBrandDetails: (details: BrandInput) => void
     onGenerate: () => void
     isGenerating: boolean
+    // Test mode props
+    onLoadTestData?: () => boolean
+    hasTestData?: boolean
 }
 
 export function BrandInputSection({
     brandDetails,
     setBrandDetails,
     onGenerate,
-    isGenerating
+    isGenerating,
+    onLoadTestData,
+    hasTestData
 }: BrandInputSectionProps) {
     const [errors, setErrors] = useState<{ companyName?: string, description?: string }>({})
 
@@ -102,7 +107,7 @@ export function BrandInputSection({
                         </div>
                     </div>
                 </CardContent>
-                <CardFooter>
+                <CardFooter className="flex flex-col gap-3">
                     <Button
                         className="w-full"
                         onClick={handleSubmit}
@@ -117,6 +122,19 @@ export function BrandInputSection({
                             "Generate Concepts"
                         )}
                     </Button>
+
+                    {/* Test mode: Load saved data */}
+                    {hasTestData && onLoadTestData && (
+                        <Button
+                            variant="outline"
+                            className="w-full"
+                            onClick={onLoadTestData}
+                            disabled={isGenerating}
+                        >
+                            <FlaskConical className="mr-2 h-4 w-4" />
+                            Load Test Data (Skip to Assembly)
+                        </Button>
+                    )}
                 </CardFooter>
             </Card>
         </div>

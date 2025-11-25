@@ -22,12 +22,17 @@ npm run lint            # Run ESLint
 
 ## Environment Setup
 
-Required environment variable in `.env.local`:
+Required environment variables in `.env.local`:
 ```
 AI_GATEWAY_API_KEY=your-vercel-ai-gateway-key
+
+# For logo vectorization (SVG conversion)
+VECTORIZER_API_ID=your-vectorizer-api-id
+VECTORIZER_API_SECRET=your-vectorizer-api-secret
 ```
 
-The application checks for this key at runtime via `/api/check-api-key` and displays a warning banner if missing.
+- `AI_GATEWAY_API_KEY`: Required for image generation. The application checks for this key at runtime via `/api/check-api-key` and displays a warning banner if missing.
+- `VECTORIZER_API_ID` / `VECTORIZER_API_SECRET`: Required for logo vectorization. Get credentials from [vectorizer.ai](https://vectorizer.ai)
 
 ## Architecture
 

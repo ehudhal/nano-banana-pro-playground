@@ -11,6 +11,7 @@
   "dependencies": {
     "@ai-sdk/gateway": "latest",
     "@ai-sdk/openai": "latest",
+    "@anthropic-ai/sdk": "^0.71.0",
     "@paper-design/shaders-react": "latest",
     "@radix-ui/react-aspect-ratio": "latest",
     "@radix-ui/react-avatar": "latest",

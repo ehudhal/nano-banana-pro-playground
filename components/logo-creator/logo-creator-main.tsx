@@ -36,7 +36,10 @@ export function LogoCreatorMain() {
         selectedLiteralMarkId,
         selectedWordmarkId,
         selectLiteralMark,
-        selectWordmark
+        selectWordmark,
+        saveTestData,
+        loadTestData,
+        hasTestData
     } = useLogoCreation()
 
     return (
@@ -63,6 +66,8 @@ export function LogoCreatorMain() {
                     setBrandDetails={setBrandDetails}
                     onGenerate={generateConcepts}
                     isGenerating={isGeneratingConcepts}
+                    onLoadTestData={loadTestData}
+                    hasTestData={hasTestData}
                 />
             )}
 
@@ -170,6 +175,7 @@ export function LogoCreatorMain() {
                     onSelectLiteralMark={selectLiteralMark}
                     onSelectWordmark={selectWordmark}
                     onReset={reset}
+                    onSaveTestData={saveTestData}
                 />
             )}
         </div>
