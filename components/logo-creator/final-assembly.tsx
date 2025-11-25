@@ -1,7 +1,54 @@
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useMemo, useRef } from "react"
 import { LogoGenerationResult } from "@/types/logo-api"
 import { Button } from "@/components/ui/button"
 import { Check, Download, Loader2, FileDown, FlaskConical } from "lucide-react"
+
+/**
+ * Get the bounding box of SVG content by rendering it offscreen
+ */
+function getSvgBBox(svgContent: string): Promise<{ x: number; y: number; width: number; height: number } | null> {
+    return new Promise((resolve) => {
+        const container = document.createElement('div')
+        container.style.position = 'absolute'
+        container.style.visibility = 'hidden'
+        container.style.pointerEvents = 'none'
+        container.innerHTML = svgContent
+        document.body.appendChild(container)
+
+        requestAnimationFrame(() => {
+            try {
+                const svgElement = container.querySelector('svg')
+                if (svgElement) {
+                    const bbox = svgElement.getBBox()
+                    resolve({ x: bbox.x, y: bbox.y, width: bbox.width, height: bbox.height })
+                } else {
+                    resolve(null)
+                }
+            } catch (e) {
+                console.error('[DEBUG] getBBox failed:', e)
+                resolve(null)
+            } finally {
+                document.body.removeChild(container)
+            }
+        })
+    })
+}
+
+/**
+ * Modify SVG to crop viewBox to actual content bounding box
+ */
+function cropSvgToContent(svgContent: string, bbox: { x: number; y: number; width: number; height: number }): string {
+    // Add a small padding around the content
+    const padding = Math.min(bbox.width, bbox.height) * 0.05
+    const newViewBox = `${bbox.x - padding} ${bbox.y - padding} ${bbox.width + padding * 2} ${bbox.height + padding * 2}`
+
+    // Replace or add viewBox attribute
+    if (svgContent.includes('viewBox=')) {
+        return svgContent.replace(/viewBox=["'][^"']*["']/, `viewBox="${newViewBox}"`)
+    } else {
+        return svgContent.replace('<svg', `<svg viewBox="${newViewBox}"`)
+    }
+}
 
 interface VectorizedLogos {
     // Key is the base ID of the literal mark
@@ -9,6 +56,14 @@ interface VectorizedLogos {
         brandSvg?: string // SVG for light theme (brand colors on transparent)
         darkSvg?: string // SVG for dark theme (dark-bg variant on transparent)
         wordmarkSvg?: string // SVG for wordmark
+        // Cropped versions with viewBox adjusted to content
+        brandSvgCropped?: string
+        darkSvgCropped?: string
+        wordmarkSvgCropped?: string
+        // Bounding boxes for aspect ratio calculations
+        brandBBox?: { x: number; y: number; width: number; height: number }
+        darkBBox?: { x: number; y: number; width: number; height: number }
+        wordmarkBBox?: { x: number; y: number; width: number; height: number }
         isVectorizing: boolean
         error?: string
     }
@@ -24,6 +79,64 @@ interface FinalAssemblyProps {
     onSaveTestData?: () => void
 }
 
+const VECTORIZED_STORAGE_KEY = 'nb_vectorized_logos'
+
+// Load vectorized logos from localStorage
+function loadVectorizedLogos(): VectorizedLogos {
+    if (typeof window === 'undefined') return {}
+    try {
+        const saved = localStorage.getItem(VECTORIZED_STORAGE_KEY)
+        if (saved) {
+            const parsed = JSON.parse(saved)
+            console.log('[DEBUG] Loaded vectorized logos from localStorage:', Object.keys(parsed))
+            return parsed
+        }
+    } catch (e) {
+        console.error('[DEBUG] Failed to load vectorized logos:', e)
+    }
+    return {}
+}
+
+// Save vectorized logos to localStorage
+function saveVectorizedLogos(logos: VectorizedLogos) {
+    if (typeof window === 'undefined') return
+    try {
+        // Only save completed vectorizations (not in-progress or errors)
+        const toSave: VectorizedLogos = {}
+        for (const [key, value] of Object.entries(logos)) {
+            if (!value.isVectorizing && !value.error && (value.brandSvg || value.darkSvg || value.wordmarkSvg)) {
+                toSave[key] = {
+                    brandSvg: value.brandSvg,
+                    darkSvg: value.darkSvg,
+                    wordmarkSvg: value.wordmarkSvg,
+                    brandSvgCropped: value.brandSvgCropped,
+                    darkSvgCropped: value.darkSvgCropped,
+                    wordmarkSvgCropped: value.wordmarkSvgCropped,
+                    brandBBox: value.brandBBox,
+                    darkBBox: value.darkBBox,
+                    wordmarkBBox: value.wordmarkBBox,
+                    isVectorizing: false
+                }
+            }
+        }
+        localStorage.setItem(VECTORIZED_STORAGE_KEY, JSON.stringify(toSave))
+        console.log('[DEBUG] Saved vectorized logos to localStorage:', Object.keys(toSave))
+    } catch (e) {
+        console.error('[DEBUG] Failed to save vectorized logos:', e)
+    }
+}
+
+// Fixed frame dimensions (the dashed placeholder sizes)
+const FRAME = {
+    // Mark frame: square
+    markSize: 80, // 80x80 pixels
+    // Wordmark frame: wider rectangle
+    wordmarkWidth: 160,
+    wordmarkHeight: 48,
+    // Gap between mark and wordmark
+    gap: 16,
+}
+
 export function FinalAssembly({
     variations,
     selectedLiteralMarkId,
@@ -33,8 +146,13 @@ export function FinalAssembly({
     onReset,
     onSaveTestData
 }: FinalAssemblyProps) {
-    // Track vectorized SVGs for selected logos
-    const [vectorizedLogos, setVectorizedLogos] = useState<VectorizedLogos>({})
+    // Track vectorized SVGs for selected logos - initialize from localStorage
+    const [vectorizedLogos, setVectorizedLogos] = useState<VectorizedLogos>(() => loadVectorizedLogos())
+
+    // Save vectorized logos to localStorage whenever they change
+    useEffect(() => {
+        saveVectorizedLogos(vectorizedLogos)
+    }, [vectorizedLogos])
 
     // Filter variations by type - only show black versions for selection (base previews)
     const literalMarks = variations.filter(v =>
@@ -118,18 +236,39 @@ export function FinalAssembly({
 
         const vectorize = async () => {
             try {
-                const results: { brandSvg?: string; darkSvg?: string } = {}
+                const results: {
+                    brandSvg?: string
+                    darkSvg?: string
+                    brandSvgCropped?: string
+                    darkSvgCropped?: string
+                    brandBBox?: { x: number; y: number; width: number; height: number }
+                    darkBBox?: { x: number; y: number; width: number; height: number }
+                } = {}
 
                 // Vectorize brand variant (white background -> transparent)
                 if (brandVariant?.url) {
                     console.log('[DEBUG] Vectorizing brand variant:', brandVariant.id)
                     results.brandSvg = await vectorizeImage(brandVariant.url, "white")
+                    // Get bounding box and create cropped version
+                    const bbox = await getSvgBBox(results.brandSvg)
+                    if (bbox) {
+                        results.brandBBox = bbox
+                        results.brandSvgCropped = cropSvgToContent(results.brandSvg, bbox)
+                        console.log('[DEBUG] Brand SVG cropped, bbox:', bbox)
+                    }
                 }
 
                 // Vectorize dark variant (black background -> transparent)
                 if (darkVariant?.url) {
                     console.log('[DEBUG] Vectorizing dark variant:', darkVariant.id)
                     results.darkSvg = await vectorizeImage(darkVariant.url, "black")
+                    // Get bounding box and create cropped version
+                    const bbox = await getSvgBBox(results.darkSvg)
+                    if (bbox) {
+                        results.darkBBox = bbox
+                        results.darkSvgCropped = cropSvgToContent(results.darkSvg, bbox)
+                        console.log('[DEBUG] Dark SVG cropped, bbox:', bbox)
+                    }
                 } else {
                     console.log('[DEBUG] No dark variant found!')
                 }
@@ -186,10 +325,23 @@ export function FinalAssembly({
                 // Wordmarks are black on white background
                 const wordmarkSvg = await vectorizeImage(wordmark.url, "white")
 
+                // Get bounding box and create cropped version
+                const bbox = await getSvgBBox(wordmarkSvg)
+                let wordmarkSvgCropped: string | undefined
+                let wordmarkBBox: { x: number; y: number; width: number; height: number } | undefined
+
+                if (bbox) {
+                    wordmarkBBox = bbox
+                    wordmarkSvgCropped = cropSvgToContent(wordmarkSvg, bbox)
+                    console.log('[DEBUG] Wordmark SVG cropped, bbox:', bbox)
+                }
+
                 setVectorizedLogos(prev => ({
                     ...prev,
                     [selectedWordmarkId]: {
                         wordmarkSvg,
+                        wordmarkSvgCropped,
+                        wordmarkBBox,
                         isVectorizing: false
                     }
                 }))
@@ -233,6 +385,88 @@ export function FinalAssembly({
 
     const isVectorizing = literalVectorStatus?.isVectorizing || wordmarkVectorStatus?.isVectorizing
 
+    // Reference to container for measuring actual pixel dimensions
+    const containerRef = useRef<HTMLDivElement>(null)
+
+    // Calculate layout based on wordmark selection
+    // The wordmark drives the scaling - if it's too wide, we scale everything down
+    const layout = useMemo(() => {
+        // Use the stored bounding boxes from vectorization
+        const wordmarkBBox = wordmarkVectorStatus?.wordmarkBBox
+        const markBBox = literalVectorStatus?.brandBBox || literalVectorStatus?.darkBBox
+
+        // Default frame dimensions (when nothing is selected or no SVG yet)
+        const defaultLayout = {
+            scaleFactor: 1,
+            markSize: FRAME.markSize,
+            markWidth: FRAME.markSize,
+            markHeight: FRAME.markSize,
+            wordmarkWidth: FRAME.wordmarkWidth,
+            wordmarkHeight: FRAME.wordmarkHeight,
+            gap: FRAME.gap,
+        }
+
+        if (!wordmarkBBox) {
+            return defaultLayout
+        }
+
+        // Calculate wordmark aspect ratio from actual content
+        const wordmarkAspectRatio = wordmarkBBox.width / wordmarkBBox.height
+
+        // The wordmark height should fill the frame height
+        // Calculate what width that would produce
+        const targetWordmarkHeight = FRAME.wordmarkHeight
+        const naturalWordmarkWidth = targetWordmarkHeight * wordmarkAspectRatio
+
+        // If the wordmark would exceed the frame width, we need to scale down
+        let scaleFactor = 1
+        if (naturalWordmarkWidth > FRAME.wordmarkWidth) {
+            scaleFactor = FRAME.wordmarkWidth / naturalWordmarkWidth
+        }
+
+        // Apply scale factor to all dimensions
+        const scaledWordmarkHeight = targetWordmarkHeight * scaleFactor
+        const scaledWordmarkWidth = scaledWordmarkHeight * wordmarkAspectRatio
+
+        // Calculate mark dimensions - preserve aspect ratio if we have bbox
+        let scaledMarkWidth = FRAME.markSize * scaleFactor
+        let scaledMarkHeight = FRAME.markSize * scaleFactor
+        if (markBBox) {
+            const markAspectRatio = markBBox.width / markBBox.height
+            // Fit within the scaled mark frame while preserving aspect ratio
+            if (markAspectRatio > 1) {
+                // Wider than tall
+                scaledMarkHeight = scaledMarkWidth / markAspectRatio
+            } else {
+                // Taller than wide
+                scaledMarkWidth = scaledMarkHeight * markAspectRatio
+            }
+        }
+        const scaledGap = FRAME.gap * scaleFactor
+
+        console.log('[DEBUG layout]', {
+            wordmarkAspectRatio,
+            targetWordmarkHeight,
+            naturalWordmarkWidth,
+            scaleFactor,
+            scaledWordmarkHeight,
+            scaledWordmarkWidth,
+            scaledMarkWidth,
+            scaledMarkHeight,
+            scaledGap,
+        })
+
+        return {
+            scaleFactor,
+            markSize: FRAME.markSize * scaleFactor, // For fallback/placeholder
+            markWidth: scaledMarkWidth,
+            markHeight: scaledMarkHeight,
+            wordmarkWidth: scaledWordmarkWidth,
+            wordmarkHeight: scaledWordmarkHeight,
+            gap: scaledGap,
+        }
+    }, [wordmarkVectorStatus?.wordmarkBBox, literalVectorStatus?.brandBBox, literalVectorStatus?.darkBBox])
+
     // Download SVG file
     const downloadSvg = useCallback((svgContent: string, filename: string) => {
         const blob = new Blob([svgContent], { type: 'image/svg+xml' })
@@ -246,22 +480,12 @@ export function FinalAssembly({
         URL.revokeObjectURL(url)
     }, [])
 
-    // Render SVG content inline
-    const renderSvg = (svgContent: string, className: string) => {
-        return (
-            <div
-                className={className}
-                dangerouslySetInnerHTML={{ __html: svgContent }}
-            />
-        )
-    }
-
     return (
         <div className="w-full max-w-7xl mx-auto space-y-8">
             <div className="text-center space-y-2">
                 <h2 className="text-3xl font-bold tracking-tight">Assemble Your Logo</h2>
                 <p className="text-muted-foreground">
-                    Select a symbol and a wordmark to see them combined as SVG.
+                    Select a wordmark first, then choose a symbol to complete your logo.
                 </p>
             </div>
 
@@ -275,16 +499,31 @@ export function FinalAssembly({
                             <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" />
                         )}
                     </div>
-                    <div className="aspect-video bg-white rounded-lg border shadow-sm flex items-center justify-center p-8 gap-4 overflow-hidden relative">
-                        {selectedLiteralMark ? (
-                            literalVectorStatus?.brandSvg ? (
-                                renderSvg(literalVectorStatus.brandSvg, "h-2/3 w-auto [&>svg]:h-full [&>svg]:w-auto")
-                            ) : literalVectorStatus?.isVectorizing ? (
-                                <div className="h-24 w-24 flex items-center justify-center">
-                                    <Loader2 className="w-8 h-8 animate-spin text-gray-300" />
-                                </div>
-                            ) : (() => {
-                                // Fallback to raster image while not vectorized
+                    <div
+                        ref={containerRef}
+                        className="aspect-video bg-white rounded-lg border shadow-sm flex items-center justify-center p-4 overflow-hidden relative"
+                        style={{ gap: `${layout.gap}px` }}
+                    >
+                        {/* Mark frame/content */}
+                        {selectedLiteralMark && literalVectorStatus?.brandSvgCropped ? (
+                            <div
+                                className="[&>svg]:h-full [&>svg]:w-full flex-shrink-0"
+                                style={{
+                                    width: layout.markWidth,
+                                    height: layout.markHeight
+                                }}
+                                dangerouslySetInnerHTML={{ __html: literalVectorStatus.brandSvgCropped }}
+                            />
+                        ) : selectedLiteralMark && literalVectorStatus?.isVectorizing ? (
+                            <div
+                                className="flex items-center justify-center flex-shrink-0"
+                                style={{ width: layout.markSize, height: layout.markSize }}
+                            >
+                                <Loader2 className="w-6 h-6 animate-spin text-gray-300" />
+                            </div>
+                        ) : selectedLiteralMark ? (
+                            // Fallback to raster image
+                            (() => {
                                 const baseId = selectedLiteralMark.id.replace(/-brand$/, '').replace(/-dark$/, '')
                                 const brandVariant = variations.find(v => v.id === `${baseId}-brand`)
                                 const displayUrl = brandVariant?.url || selectedLiteralMark.url
@@ -292,33 +531,53 @@ export function FinalAssembly({
                                     <img
                                         src={displayUrl}
                                         alt="Selected Symbol"
-                                        className="h-2/3 w-auto object-contain"
+                                        className="object-contain flex-shrink-0"
+                                        style={{ width: layout.markSize, height: layout.markSize }}
                                     />
                                 )
                             })()
                         ) : (
-                            <div className="h-24 w-24 rounded-full border-2 border-dashed border-gray-200 flex items-center justify-center text-gray-300 text-xs text-center p-2">
-                                Select Symbol
+                            // Dashed placeholder for mark
+                            <div
+                                className="rounded-lg border-2 border-dashed border-gray-200 flex items-center justify-center text-gray-300 text-xs text-center p-2 flex-shrink-0"
+                                style={{ width: FRAME.markSize, height: FRAME.markSize }}
+                            >
+                                Symbol
                             </div>
                         )}
 
-                        {selectedWordmark ? (
-                            wordmarkVectorStatus?.wordmarkSvg ? (
-                                renderSvg(wordmarkVectorStatus.wordmarkSvg, "h-2/3 w-auto [&>svg]:h-full [&>svg]:w-auto")
-                            ) : wordmarkVectorStatus?.isVectorizing ? (
-                                <div className="h-16 w-32 flex items-center justify-center">
-                                    <Loader2 className="w-6 h-6 animate-spin text-gray-300" />
-                                </div>
-                            ) : (
-                                <img
-                                    src={selectedWordmark.url}
-                                    alt="Selected Wordmark"
-                                    className="h-2/3 w-auto object-contain"
-                                />
-                            )
+                        {/* Wordmark frame/content */}
+                        {selectedWordmark && wordmarkVectorStatus?.wordmarkSvgCropped ? (
+                            <div
+                                className="[&>svg]:h-full [&>svg]:w-full flex-shrink-0"
+                                style={{
+                                    width: layout.wordmarkWidth,
+                                    height: layout.wordmarkHeight
+                                }}
+                                dangerouslySetInnerHTML={{ __html: wordmarkVectorStatus.wordmarkSvgCropped }}
+                            />
+                        ) : selectedWordmark && wordmarkVectorStatus?.isVectorizing ? (
+                            <div
+                                className="flex items-center justify-center flex-shrink-0"
+                                style={{ width: FRAME.wordmarkWidth, height: FRAME.wordmarkHeight }}
+                            >
+                                <Loader2 className="w-5 h-5 animate-spin text-gray-300" />
+                            </div>
+                        ) : selectedWordmark ? (
+                            // Fallback to raster
+                            <img
+                                src={selectedWordmark.url}
+                                alt="Selected Wordmark"
+                                className="object-contain flex-shrink-0"
+                                style={{ width: FRAME.wordmarkWidth, height: FRAME.wordmarkHeight }}
+                            />
                         ) : (
-                            <div className="h-16 w-48 rounded border-2 border-dashed border-gray-200 flex items-center justify-center text-gray-300 text-xs">
-                                Select Wordmark
+                            // Dashed placeholder for wordmark
+                            <div
+                                className="rounded border-2 border-dashed border-gray-200 flex items-center justify-center text-gray-300 text-xs flex-shrink-0"
+                                style={{ width: FRAME.wordmarkWidth, height: FRAME.wordmarkHeight }}
+                            >
+                                Wordmark
                             </div>
                         )}
 
@@ -358,16 +617,30 @@ export function FinalAssembly({
                             <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" />
                         )}
                     </div>
-                    <div className="aspect-video bg-slate-950 rounded-lg border shadow-sm flex items-center justify-center p-8 gap-4 overflow-hidden relative">
-                        {selectedLiteralMark ? (
-                            literalVectorStatus?.darkSvg ? (
-                                renderSvg(literalVectorStatus.darkSvg, "h-2/3 w-auto [&>svg]:h-full [&>svg]:w-auto")
-                            ) : literalVectorStatus?.isVectorizing ? (
-                                <div className="h-24 w-24 flex items-center justify-center">
-                                    <Loader2 className="w-8 h-8 animate-spin text-slate-600" />
-                                </div>
-                            ) : (() => {
-                                // Fallback to raster image
+                    <div
+                        className="aspect-video bg-slate-950 rounded-lg border shadow-sm flex items-center justify-center p-4 overflow-hidden relative"
+                        style={{ gap: `${layout.gap}px` }}
+                    >
+                        {/* Mark frame/content */}
+                        {selectedLiteralMark && literalVectorStatus?.darkSvgCropped ? (
+                            <div
+                                className="[&>svg]:h-full [&>svg]:w-full flex-shrink-0"
+                                style={{
+                                    width: layout.markWidth,
+                                    height: layout.markHeight
+                                }}
+                                dangerouslySetInnerHTML={{ __html: literalVectorStatus.darkSvgCropped }}
+                            />
+                        ) : selectedLiteralMark && literalVectorStatus?.isVectorizing ? (
+                            <div
+                                className="flex items-center justify-center flex-shrink-0"
+                                style={{ width: layout.markSize, height: layout.markSize }}
+                            >
+                                <Loader2 className="w-6 h-6 animate-spin text-slate-600" />
+                            </div>
+                        ) : selectedLiteralMark ? (
+                            // Fallback to raster
+                            (() => {
                                 const baseId = selectedLiteralMark.id.replace(/-brand$/, '').replace(/-dark$/, '')
                                 const darkVariant = variations.find(v => v.id === `${baseId}-dark`)
                                 const displayUrl = darkVariant?.url || selectedLiteralMark.url
@@ -375,34 +648,53 @@ export function FinalAssembly({
                                     <img
                                         src={displayUrl}
                                         alt="Selected Symbol"
-                                        className="h-2/3 w-auto object-contain"
+                                        className="object-contain flex-shrink-0"
+                                        style={{ width: layout.markSize, height: layout.markSize }}
                                     />
                                 )
                             })()
                         ) : (
-                            <div className="h-24 w-24 rounded-full border-2 border-dashed border-slate-800 flex items-center justify-center text-slate-700 text-xs text-center p-2">
-                                Select Symbol
+                            // Dashed placeholder
+                            <div
+                                className="rounded-lg border-2 border-dashed border-slate-800 flex items-center justify-center text-slate-700 text-xs text-center p-2 flex-shrink-0"
+                                style={{ width: FRAME.markSize, height: FRAME.markSize }}
+                            >
+                                Symbol
                             </div>
                         )}
 
-                        {selectedWordmark ? (
-                            wordmarkVectorStatus?.wordmarkSvg ? (
-                                // Invert the wordmark SVG for dark theme
-                                renderSvg(wordmarkVectorStatus.wordmarkSvg, "h-2/3 w-auto [&>svg]:h-full [&>svg]:w-auto invert")
-                            ) : wordmarkVectorStatus?.isVectorizing ? (
-                                <div className="h-16 w-32 flex items-center justify-center">
-                                    <Loader2 className="w-6 h-6 animate-spin text-slate-600" />
-                                </div>
-                            ) : (
-                                <img
-                                    src={selectedWordmark.url}
-                                    alt="Selected Wordmark"
-                                    className="h-2/3 w-auto object-contain invert filter"
-                                />
-                            )
+                        {/* Wordmark frame/content */}
+                        {selectedWordmark && wordmarkVectorStatus?.wordmarkSvgCropped ? (
+                            <div
+                                className="[&>svg]:h-full [&>svg]:w-full invert flex-shrink-0"
+                                style={{
+                                    width: layout.wordmarkWidth,
+                                    height: layout.wordmarkHeight
+                                }}
+                                dangerouslySetInnerHTML={{ __html: wordmarkVectorStatus.wordmarkSvgCropped }}
+                            />
+                        ) : selectedWordmark && wordmarkVectorStatus?.isVectorizing ? (
+                            <div
+                                className="flex items-center justify-center flex-shrink-0"
+                                style={{ width: FRAME.wordmarkWidth, height: FRAME.wordmarkHeight }}
+                            >
+                                <Loader2 className="w-5 h-5 animate-spin text-slate-600" />
+                            </div>
+                        ) : selectedWordmark ? (
+                            // Fallback to raster
+                            <img
+                                src={selectedWordmark.url}
+                                alt="Selected Wordmark"
+                                className="object-contain invert filter flex-shrink-0"
+                                style={{ width: FRAME.wordmarkWidth, height: FRAME.wordmarkHeight }}
+                            />
                         ) : (
-                            <div className="h-16 w-48 rounded border-2 border-dashed border-slate-800 flex items-center justify-center text-slate-700 text-xs">
-                                Select Wordmark
+                            // Dashed placeholder
+                            <div
+                                className="rounded border-2 border-dashed border-slate-800 flex items-center justify-center text-slate-700 text-xs flex-shrink-0"
+                                style={{ width: FRAME.wordmarkWidth, height: FRAME.wordmarkHeight }}
+                            >
+                                Wordmark
                             </div>
                         )}
 
@@ -430,37 +722,11 @@ export function FinalAssembly({
                 </div>
             )}
 
-            {/* Selection Section */}
+            {/* Selection Section - Wordmark first */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pt-8 border-t">
-                {/* Literal Marks Selection */}
+                {/* Wordmarks Selection - First */}
                 <div className="space-y-4">
-                    <h3 className="font-semibold text-lg">1. Choose a Symbol</h3>
-                    <div className="grid grid-cols-3 gap-4">
-                        {literalMarks.map((mark) => (
-                            <div
-                                key={mark.id}
-                                className={`relative aspect-square rounded-md overflow-hidden border cursor-pointer transition-all hover:ring-2 hover:ring-primary/50 ${selectedLiteralMarkId === mark.id ? 'ring-2 ring-primary border-primary' : 'border-border'
-                                    }`}
-                                onClick={() => onSelectLiteralMark(mark.id)}
-                            >
-                                <img
-                                    src={mark.url}
-                                    alt="Literal Mark Option"
-                                    className="w-full h-full object-cover"
-                                />
-                                {selectedLiteralMarkId === mark.id && (
-                                    <div className="absolute top-2 right-2 bg-primary text-primary-foreground rounded-full p-0.5">
-                                        <Check className="w-3 h-3" />
-                                    </div>
-                                )}
-                            </div>
-                        ))}
-                    </div>
-                </div>
-
-                {/* Wordmarks Selection */}
-                <div className="space-y-4">
-                    <h3 className="font-semibold text-lg">2. Choose a Wordmark</h3>
+                    <h3 className="font-semibold text-lg">1. Choose a Wordmark</h3>
                     <div className="grid grid-cols-2 gap-4">
                         {wordmarks.map((mark) => (
                             <div
@@ -475,6 +741,32 @@ export function FinalAssembly({
                                     className="w-full h-full object-cover"
                                 />
                                 {selectedWordmarkId === mark.id && (
+                                    <div className="absolute top-2 right-2 bg-primary text-primary-foreground rounded-full p-0.5">
+                                        <Check className="w-3 h-3" />
+                                    </div>
+                                )}
+                            </div>
+                        ))}
+                    </div>
+                </div>
+
+                {/* Literal Marks Selection - Second */}
+                <div className="space-y-4">
+                    <h3 className="font-semibold text-lg">2. Choose a Symbol</h3>
+                    <div className="grid grid-cols-3 gap-4">
+                        {literalMarks.map((mark) => (
+                            <div
+                                key={mark.id}
+                                className={`relative aspect-square rounded-md overflow-hidden border cursor-pointer transition-all hover:ring-2 hover:ring-primary/50 ${selectedLiteralMarkId === mark.id ? 'ring-2 ring-primary border-primary' : 'border-border'
+                                    }`}
+                                onClick={() => onSelectLiteralMark(mark.id)}
+                            >
+                                <img
+                                    src={mark.url}
+                                    alt="Literal Mark Option"
+                                    className="w-full h-full object-cover"
+                                />
+                                {selectedLiteralMarkId === mark.id && (
                                     <div className="absolute top-2 right-2 bg-primary text-primary-foreground rounded-full p-0.5">
                                         <Check className="w-3 h-3" />
                                     </div>

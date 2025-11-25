@@ -110,6 +110,34 @@ function detectBackgroundColor(svgContent: string): string | null {
 }
 
 /**
+ * Remove outline strokes that are artifacts from the vectorization process.
+ * The vectorizer.ai API produces SVGs with a <g> group containing stroked paths that duplicate
+ * the filled shapes, creating an unwanted outline effect. These strokes can be grey (#808080)
+ * for monochrome logos or colored to match the design for colored logos.
+ *
+ * The key identifier is the group structure: <g stroke-width="..." fill="none" stroke-linecap="...">
+ * This group always contains only stroked paths with vector-effect="non-scaling-stroke" and no fill.
+ */
+function removeOutlineStrokes(svgContent: string): string {
+  // Remove the entire stroke group that matches the vectorizer.ai pattern
+  // This group has: stroke-width, fill="none", stroke-linecap, and contains paths with stroke and vector-effect
+  // The pattern is consistent across both monochrome and colored SVGs
+  const strokeGroupPattern = /<g\s+stroke-width=["'][^"']*["']\s+fill=["']none["']\s+stroke-linecap=["'][^"']*["'][^>]*>[\s\S]*?<\/g>/gi
+
+  let processedSvg = svgContent.replace(strokeGroupPattern, (match) => {
+    // Verify this is the outline stroke group by checking for vector-effect="non-scaling-stroke"
+    // This attribute is characteristic of the vectorizer.ai outline strokes
+    if (/vector-effect=["']non-scaling-stroke["']/i.test(match)) {
+      console.log('[DEBUG] Removing outline stroke group from vectorized SVG')
+      return '<!-- outline strokes removed -->'
+    }
+    return match
+  })
+
+  return processedSvg
+}
+
+/**
  * Remove background from SVG by detecting the background color and removing all elements with that color.
  * The background color is detected by finding the first large shape that covers the full canvas.
  */
@@ -231,9 +259,15 @@ export async function POST(request: NextRequest) {
     // Debug: Log first 500 chars of SVG to understand structure
     console.log(`[DEBUG] Raw SVG preview (first 500 chars):\n${rawSvg.substring(0, 500)}`)
 
-    // Step 2: Remove background programmatically
+    // Step 2: Remove outline strokes (vectorizer artifact)
+    const strokeRemovalStart = performance.now()
+    const svgWithoutStrokes = removeOutlineStrokes(rawSvg)
+    const strokeRemovalTime = performance.now() - strokeRemovalStart
+    console.log(`[TIMING] Outline stroke removal: ${strokeRemovalTime.toFixed(2)}ms`)
+
+    // Step 3: Remove background programmatically
     const bgRemovalStart = performance.now()
-    const transparentSvg = removeBackgroundFromSvg(rawSvg, backgroundColor)
+    const transparentSvg = removeBackgroundFromSvg(svgWithoutStrokes, backgroundColor)
     const bgRemovalTime = performance.now() - bgRemovalStart
     console.log(`[TIMING] Background removal: ${bgRemovalTime.toFixed(2)}ms`)
 
